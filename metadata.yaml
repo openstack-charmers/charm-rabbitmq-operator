@@ -1,0 +1,29 @@
+# Copyright 2021 David Ames
+# See LICENSE file for licensing details.
+name: rabbitmq-operator
+description: Rabbitmq
+summary: Rabbitmq charmed operator for Kubernetes
+
+containers:
+  rabbitmq:
+    resource: rabbitmq-image
+    mounts:
+      - storage: rabbitmq-data
+        location: /var/lib/rabbitmq/mnesia
+      - storage: rabbitmq-config
+        location: /etc/rabbitmq
+
+resources:
+  rabbitmq-image:
+    type: oci-image
+    description: OCI image for rabbitmq
+
+storage:
+  rabbitmq-data:
+    type: filesystem
+  rabbitmq-config:
+    type: filesystem
+
+requires:
+  ingress:
+    interface: ingress
