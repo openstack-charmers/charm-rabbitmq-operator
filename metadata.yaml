@@ -27,3 +27,7 @@ storage:
 requires:
   ingress:
     interface: ingress
+
+peers:
+  peers:
+    interface: rabbitmq-operator-peer

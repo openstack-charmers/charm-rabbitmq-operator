@@ -22,6 +22,7 @@ from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus
+import interface_rabbitmq_operator_peers
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,9 @@ class RabbitmqOperatorCharm(CharmBase):
         self.framework.observe(self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.get_operator_info_action, self._on_get_operator_info_action)
+        self.peers = interface_rabbitmq_operator_peers.RabbitmqOperatorPeers(self, "peers")
+        self.framework.observe(self.peers.on.has_peers, self._on_has_peers)
+
         self._stored.set_default(operator={})
         self._stored.set_default(enabled_plugins=[])
 
@@ -71,8 +75,8 @@ class RabbitmqOperatorCharm(CharmBase):
         else:
             self._disable_plugin("rabbitmq_management")
 
-        # Render enabled_plugins
-        self._update_files()
+        # Render and push configuration files
+        self._render_and_push_config_files()
 
         # Get the rabbitmq container so we can configure/manipulate it
         container = self.unit.get_container(RABBITMQ_CONTAINER)
@@ -80,10 +84,6 @@ class RabbitmqOperatorCharm(CharmBase):
         layer = self._rabbitmq_layer()
         # Get the current config
         plan = container.get_plan()
-        if plan.services:
-            logging.info("Plan: {}\n{}".format(
-                plan.services,
-                dir(plan.services[RABBITMQ_SERVER_SERVICE])))
         if not plan.services or (
                 plan.services[RABBITMQ_SERVER_SERVICE].to_dict() !=
                 layer["services"][RABBITMQ_SERVER_SERVICE]):
@@ -96,14 +96,6 @@ class RabbitmqOperatorCharm(CharmBase):
             # Restart it and report a new status to Juju
             container.start(RABBITMQ_SERVER_SERVICE)
             logging.info("Restarted rabbitmq-service service")
-        try:
-            api = rabbitmq_admin.AdminAPI(
-                url=self._rabbitmq_mgmt_url,
-                auth=(self._operator_user, self._operator_password))
-            api.get_user(self._operator_user)
-        except rabbitmq_admin.base.requests.exceptions.HTTPError:
-            logging.warning("Failed checking for the operator user")
-            self._initialize_operator_user()
 
         # All is well, set an ActiveStatus
         self.unit.status = ActiveStatus()
@@ -122,6 +114,15 @@ class RabbitmqOperatorCharm(CharmBase):
             },
         }
 
+    def _on_has_peers(self, event):
+        """Event handler on has peers.
+        """
+        logging.info("Peer relation instantiated.")
+        # Generate the operator user/password
+        if (not self.peers.operator_user_created and
+                self.unit.is_leader()):
+            self._initialize_operator_user()
+
     def _enable_plugin(self, plugin):
         if plugin not in self._stored.enabled_plugins:
             self._stored.enabled_plugins.append(plugin)
@@ -138,26 +139,27 @@ class RabbitmqOperatorCharm(CharmBase):
 
     @property
     def _operator_password(self) -> Union[str, None]:
-        if not self.unit.is_leader():
-            return None
-
-        if "OPERATOR_PASSWORD" not in self._stored.operator:
-            self._stored.operator["OPERATOR_PASSWORD"] = pwgen.pwgen(12)
-
-        return self._stored.operator["OPERATOR_PASSWORD"]
+        if not self.peers.operator_password and self.unit.is_leader():
+            self.peers.set_operator_password(pwgen.pwgen(12))
+        return self.peers.operator_password
 
     def _initialize_operator_user(self):
+        if not self._operator_password:
+            logging.warning(
+                "Called initialize the operator user too early. "
+                "Defer.")
+            return
         logging.info("Initializing the operator user.")
         # Use guest to create operator user
         api = rabbitmq_admin.AdminAPI(url=self._rabbitmq_mgmt_url, auth=("guest", "guest"))
-        # Make this idempotent
         api.create_user(self._operator_user, self._operator_password, tags=["administrator"])
         api.create_user_permission(self._operator_user, vhost="/")
-        # Burn the bridge behind us
+        self.peers.set_operator_user_created(self._operator_user)
+        # Burn the bridge behind us. We do not want to leave a known user/pass available
         logging.warning("Deleting the guest user.")
-        # api.delete_user("guest")
+        api.delete_user("guest")
 
-    def _update_files(self):
+    def _render_and_push_config_files(self):
         self._render_and_push_enabled_plugins()
         self._render_and_push_rabbitmq_conf()
 
