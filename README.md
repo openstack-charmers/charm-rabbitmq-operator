@@ -2,11 +2,31 @@
 
 ## Description
 
-TODO: Describe your charm in a few paragraphs of Markdown
+Charmed RabbitMQ operator for Kubernetes.
 
 ## Usage
 
-TODO: Provide high-level usage, such as required config or relations
+### Deploy
+
+.. code:: bash
+
+ juju deploy ./rabbitmq-operator.charm --resource rabbitmq-image=rabbitmq
+ juju deploy nginx-ingress-integrator
+ juju add-relation rabbitmq-operator nginx-ingress-integrator
+
+
+### Access the RabbitMQ managment web UI
+
+.. code:: bash
+ # Let the model settle
+ juju status
+ # Get Ingress with service IP
+ juju run-action --wait rabbitmq-operator/0 get-operator-info
+ # Get user and password for administrive operator user
+ 
+In a browser
+* Connect to the Ingresss with service IP 
+* Login with "operator" and the password from get-operator-info
 
 
 ## Developing

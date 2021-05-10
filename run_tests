@@ -1,5 +1,5 @@
 #!/bin/sh -e
-# Copyright 2021 David
+# Copyright 2021 David Ames
 # See LICENSE file for licensing details.
 
 if [ -z "$VIRTUAL_ENV" -a -d venv/ ]; then
@@ -12,6 +12,6 @@ else
     export PYTHONPATH="lib:src:$PYTHONPATH"
 fi
 
-flake8
+flake8 src tests
 coverage run --source=src -m unittest -v "$@"
 coverage report -m
