@@ -23,6 +23,7 @@ from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus
 import interface_rabbitmq_operator_peers
+import interface_rabbitmq_operator_amqp_provider
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ RABBITMQ_CONTAINER = "rabbitmq"
 RABBITMQ_SERVER_SERVICE = "rabbitmq-server"
 
 
-class RabbitmqOperatorCharm(CharmBase):
+class RabbitMQOperatorCharm(CharmBase):
     """Charm the service."""
 
     _stored = StoredState()
@@ -41,8 +42,15 @@ class RabbitmqOperatorCharm(CharmBase):
         self.framework.observe(self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.get_operator_info_action, self._on_get_operator_info_action)
-        self.peers = interface_rabbitmq_operator_peers.RabbitmqOperatorPeers(self, "peers")
+        # Peers
+        self.peers = interface_rabbitmq_operator_peers.RabbitMQOperatorPeers(self, "peers")
         self.framework.observe(self.peers.on.has_peers, self._on_has_peers)
+        # AMQP Provider
+        self.amqp_provider = (
+            interface_rabbitmq_operator_amqp_provider.RabbitMQAMQPProvider(self, "amqp"))
+        # self.framework.observe(self.amqp_provider.on.has_peers, self._on_has_amqp_clients)
+        self.framework.observe(
+            self.amqp_provider.on.ready_amqp_clients, self._on_ready_amqp_clients)
 
         self._stored.set_default(operator={})
         self._stored.set_default(enabled_plugins=[])
@@ -107,7 +115,7 @@ class RabbitmqOperatorCharm(CharmBase):
             "services": {
                 RABBITMQ_SERVER_SERVICE: {
                     "override": "replace",
-                    "summary": "Rabbitmq Server",
+                    "summary": "RabbitMQ Server",
                     "command": "rabbitmq-server",
                     "startup": "enabled",
                 },
@@ -122,6 +130,11 @@ class RabbitmqOperatorCharm(CharmBase):
         if (not self.peers.operator_user_created and
                 self.unit.is_leader()):
             self._initialize_operator_user()
+
+    def _on_ready_amqp_clients(self, event):
+        """WIP Event handler on AMQP clients ready.
+        """
+        pass
 
     def _enable_plugin(self, plugin):
         if plugin not in self._stored.enabled_plugins:
@@ -195,4 +208,4 @@ loopback_users = {loopback_users}
 
 
 if __name__ == "__main__":
-    main(RabbitmqOperatorCharm)
+    main(RabbitMQOperatorCharm)

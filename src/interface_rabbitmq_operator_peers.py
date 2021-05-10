@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+"""
+Work in progress interface for AMQP relations
+"""
+
 import logging
 
 from ops.framework import (
@@ -19,14 +23,14 @@ class ReadyPeersEvent(EventBase):
     pass
 
 
-class RabbitmqOperatorPeerEvents(ObjectEvents):
+class RabbitMQOperatorPeerEvents(ObjectEvents):
     has_peers = EventSource(HasPeersEvent)
     ready_peers = EventSource(ReadyPeersEvent)
 
 
-class RabbitmqOperatorPeers(Object):
+class RabbitMQOperatorPeers(Object):
 
-    on = RabbitmqOperatorPeerEvents()
+    on = RabbitMQOperatorPeerEvents()
     state = StoredState()
     OPERATOR_PASSWORD = "operator_password"
     OPERATOR_USER_CREATED = "operator_user_created"
@@ -35,20 +39,22 @@ class RabbitmqOperatorPeers(Object):
         super().__init__(charm, relation_name)
         self.relation_name = relation_name
         self.framework.observe(
+            charm.on[relation_name].relation_joined,
+            self.on_joined)
+        self.framework.observe(
             charm.on[relation_name].relation_changed,
             self.on_changed)
 
     @property
     def peers_rel(self):
-        logging.info(
-            "Relation {}: {}".format(
-                self.relation_name,
-                self.framework.model.get_relation(self.relation_name)))
         return self.framework.model.get_relation(self.relation_name)
 
-    def on_changed(self, event):
-        logging.info("RabbitmqOperatorPeers on_changed")
+    def on_joined(self, event):
+        logging.info("RabbitMQOperatorPeers on_joined")
         self.on.has_peers.emit()
+
+    def on_changed(self, event):
+        logging.info("RabbitMQOperatorPeers on_changed")
         # TODO check for some data on the relation
         self.on.ready_peers.emit()
 

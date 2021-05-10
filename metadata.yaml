@@ -24,6 +24,10 @@ storage:
   rabbitmq-config:
     type: filesystem
 
+provides:
+  amqp:
+    interface: rabbitmq
+
 requires:
   ingress:
     interface: ingress
