@@ -208,4 +208,4 @@ loopback_users = {loopback_users}
 
 
 if __name__ == "__main__":
-    main(RabbitMQOperatorCharm)
+    main(RabbitMQOperatorCharm, use_juju_for_storage=True)
