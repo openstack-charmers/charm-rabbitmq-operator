@@ -77,7 +77,7 @@ class RabbitMQAMQPRequires(Object):
         logging.debug("RabbitMQAMQPRequires on_departed")
 
     def password(self, event):
-        return event.relation.data[self.charm.app].get("password")
+        return event.relation.data[self._amqp_rel.app].get("password")
 
     def request_access(self, event, username, vhost):
         logging.debug("Requesting AMQP user and vhost")
@@ -156,10 +156,9 @@ class RabbitMQAMQPProvides(Object):
         try:
             if not self.charm.does_vhost_exist(vhost):
                 self.charm.create_vhost(vhost)
-            if not self.charm.does_vhost_exist(username):
-                password = self.charm.create_user(username)
-                self.charm.set_user_permissions(username, vhost)
-                event.relation.data[self.charm.app]["password"] = password
+            password = self.charm.create_user(username)
+            self.charm.set_user_permissions(username, vhost)
+            event.relation.data[self.charm.app]["password"] = password
             event.relation.data[self.charm.app]["hostname"] = self.charm.hostname
         except requests.exceptions.ConnectionError as e:
             logging.warning("Rabbitmq is not ready. Defering. Errno: {}".format(e.errno))

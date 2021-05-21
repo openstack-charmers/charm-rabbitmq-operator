@@ -83,6 +83,7 @@ class RabbitMQOperatorCharm(CharmBase):
             container.autostart()
         else:
             logging.debug("Rabbitmq service is running")
+        self._on_update_status(event)
 
     def _on_config_changed(self, event):
         """Config changed.
@@ -165,12 +166,12 @@ class RabbitMQOperatorCharm(CharmBase):
                 logging.warning(
                     "Rabbitmq is not ready. Defering. Errno: {}".format(e.response.status_code))
                 event.defer()
+        self._on_update_status(event)
 
     def _on_ready_amqp_clients(self, event):
         """Event handler on AMQP clients ready.
         """
-        logging.warning("Handled in the interface")
-        pass
+        self._on_update_status(event)
 
     @property
     def amqp_rel(self):
@@ -229,13 +230,6 @@ class RabbitMQOperatorCharm(CharmBase):
 
     @property
     def hostname(self):
-        # For now we will use http://localhost
-        # TODO get service or ingress URL for the pod
-        # Internal
-        # f"{self.unit.name}.{self.app.name}-endpoints.{self.model.name}.svc.cluster.local"
-        # External
-        # f"{self.unit.name}.{self.app.name}.{self.model.name}.svc.cluster.local"
-        # return "localhost"
         return self.amqp_bind_address
 
     @property
@@ -307,7 +301,13 @@ loopback_users = {loopback_users}
 
     def _on_update_status(self, event):
         if self.peers.operator_user_created:
-            self.unit.status = ActiveStatus()
+            if self.amqp_rel:
+                if self.amqp_rel.data[self.amqp_rel.app].get("vhost"):
+                    self.unit.status = ActiveStatus()
+                else:
+                    self.unit.status = WaitingStatus("AMQP relation incomplete")
+            else:
+                self.unit.status = WaitingStatus("Ready but waiting for an AMQP client relation.")
         else:
             self.unit.status = WaitingStatus("Waiting to initilaize operator user")
 
