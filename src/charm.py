@@ -19,11 +19,11 @@ import requests
 from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
-from charms.interface_rabbitmq_amqp.v0.rabbitmq import RabbitMQAMQPProvides
+from charms.thedac_rabbitmq_operator.v0.amqp import RabbitMQAMQPProvides
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus, WaitingStatus
+from ops.model import ActiveStatus, WaitingStatus, Relation
 import interface_rabbitmq_operator_peers
 
 logger = logging.getLogger(__name__)
@@ -32,12 +32,8 @@ RABBITMQ_CONTAINER = "rabbitmq"
 RABBITMQ_SERVER_SERVICE = "rabbitmq-server"
 
 
-class RabbitMQAdminAPINotReady(Exception):
-    pass
-
-
 class RabbitMQOperatorCharm(CharmBase):
-    """Charm the service."""
+    """Rabbit MQ Operator Charm"""
 
     _stored = StoredState()
     _operator_user = "operator"
@@ -45,7 +41,6 @@ class RabbitMQOperatorCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        # TODO on_relation_created
         self.framework.observe(self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready)
         self.framework.observe(self.on.config_changed, self._on_config_changed)
         self.framework.observe(self.on.get_operator_info_action, self._on_get_operator_info_action)
@@ -55,14 +50,12 @@ class RabbitMQOperatorCharm(CharmBase):
         self.framework.observe(self.peers.on.has_peers, self._on_has_peers)
         # AMQP Provides
         self.amqp_provider = (RabbitMQAMQPProvides(self, "amqp"))
-        # self.framework.observe(self.amqp_provider.on.has_peers, self._on_has_amqp_clients)
         self.framework.observe(
             self.amqp_provider.on.ready_amqp_clients, self._on_ready_amqp_clients)
 
         self._stored.set_default(users={})
         self._stored.set_default(operator={})
         self._stored.set_default(enabled_plugins=[])
-        self.api_not_ready = RabbitMQAdminAPINotReady
 
         self.ingress_mgmt = IngressRequires(self, {
             "service-hostname": "rabbitmq-management.juju",
@@ -70,8 +63,11 @@ class RabbitMQOperatorCharm(CharmBase):
             "service-port": 15672
         })
 
-    def _on_rabbitmq_pebble_ready(self, event):
-        """Define and start a workload using the Pebble API.
+    def _on_rabbitmq_pebble_ready(self, event) -> None:
+        """Define and start rabbitmq workload using the Pebble API.
+
+        :returns: None
+        :rtype: None
         """
         # Get a reference the container attribute on the PebbleReadyEvent
         container = event.workload
@@ -85,8 +81,11 @@ class RabbitMQOperatorCharm(CharmBase):
             logging.debug("Rabbitmq service is running")
         self._on_update_status(event)
 
-    def _on_config_changed(self, event):
+    def _on_config_changed(self, event) -> None:
         """Config changed.
+
+        :returns: None
+        :rtype: None
         """
         management_plugin = self.config["management_plugin"]
         if management_plugin:
@@ -133,7 +132,12 @@ class RabbitMQOperatorCharm(CharmBase):
 
         self._on_update_status(event)
 
-    def _rabbitmq_layer(self):
+    def _rabbitmq_layer(self) -> dict:
+        """Rabbitmq layer definition.
+
+        :returns: Pebble layer configuration
+        :rtype: dict
+        """
         return {
             "summary": "rabbitmq layer",
             "description": "pebble config layer for rabbitmq",
@@ -147,8 +151,11 @@ class RabbitMQOperatorCharm(CharmBase):
             },
         }
 
-    def _on_has_peers(self, event):
+    def _on_has_peers(self, event) -> None:
         """Event handler on has peers.
+
+        :returns: None
+        :rtype: None
         """
         logging.info("Peer relation instantiated.")
         if (not self.peers.operator_user_created and
@@ -168,93 +175,211 @@ class RabbitMQOperatorCharm(CharmBase):
                 event.defer()
         self._on_update_status(event)
 
-    def _on_ready_amqp_clients(self, event):
+    def _on_ready_amqp_clients(self, event) -> None:
         """Event handler on AMQP clients ready.
+
+        :returns: None
+        :rtype: None
         """
         self._on_update_status(event)
 
     @property
-    def amqp_rel(self):
+    def amqp_rel(self) -> Relation:
+        """AMQP relation.
+
+        :returns: Pebble layer configuration
+        :rtype: ops.model.Relation
+        """
         return self.framework.model.get_relation("amqp")
 
     @property
-    def amqp_bind_address(self):
+    def amqp_bind_address(self) -> str:
+        """Bind address for AMQP.
+
+        :returns: Pebble layer configuration
+        :rtype: str
+        """
         return str(
             self.model.get_binding(self.amqp_rel).network.bind_address)
 
-    def does_user_exist(self, user):
+    def does_user_exist(self, username) -> Union[str, None]:
+        """Does the username exist in rabbitmq?
+
+        Return the username if exists.
+        Return None if not.
+
+        :param username: Username to check
+        :type username: str
+        :returns: String username or None
+        :rtype: Union[str, None]
+        """
         api = self._get_admin_api(self._operator_user, self._operator_password)
         try:
-            return api.get_user(user)
+            api.get_user(username)
         except requests.exceptions.HTTPError as e:
+            # Username does not exist
             if e.response.status_code == 404:
-                return False
+                return
             else:
                 raise e
 
-    def does_vhost_exist(self, vhost):
+    def does_vhost_exist(self, vhost) -> Union[str, None]:
+        """Does the vhost exist in rabbitmq?
+
+        Return the username if exists.
+        Return None if not.
+
+        :param username: vhost to check
+        :type username: str
+        :returns: String vhost or None
+        :rtype: Union[str, None]
+        """
         api = self._get_admin_api(self._operator_user, self._operator_password)
         try:
-            return api.get_vhost(vhost)
+            api.get_vhost(vhost)
         except requests.exceptions.HTTPError as e:
+            # Vhost does not exist
             if e.response.status_code == 404:
-                return False
+                return
             else:
                 raise e
 
-    def create_user(self, user):
+    def create_user(self, username) -> str:
+        """Create user in rabbitmq.
+
+        Return the password for the user.
+
+        :param username: vhost to check
+        :type username: str
+        :returns: String password
+        :rtype: str
+        """
         api = self._get_admin_api(self._operator_user, self._operator_password)
         _password = pwgen.pwgen(12)
-        api.create_user(user, _password)
+        api.create_user(username, _password)
         return _password
 
-    def set_user_permissions(self, user, vhost, configure=".*", write=".*", read=".*"):
-        api = self._get_admin_api(self._operator_user, self._operator_password)
-        return api.create_user_permission(user, vhost, configure=configure, write=write, read=read)
+    def set_user_permissions(
+            self, username, vhost,
+            configure=".*", write=".*", read=".*") -> None:
+        """Set user permissions.
 
-    def create_vhost(self, vhost):
-        api = self._get_admin_api(self._operator_user, self._operator_password)
-        try:
-            return api.create_vhost(vhost)
-        except requests.exceptions.HTTPError as e:
-            logging.error(e)
-            raise e
+        Return the password for the user.
 
-    def _enable_plugin(self, plugin):
+        :param username: User to change permission on
+        :type username: str
+        :param configure: Configure perms. Default ".*"
+        :type configure: str
+        :param write: Write perms. Default ".*"
+        :type write: str
+        :param read: Read perms. Default ".*"
+        :type read: str
+        :returns: None
+        :rtype: None
+        """
+        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api.create_user_permission(
+            username, vhost, configure=configure, write=write, read=read)
+
+    def create_vhost(self, vhost) -> None:
+        """Create vhost in rabbitmq.
+
+        :param vhost: Vhost to create.
+        :type vhost: str
+        :returns: None
+        :rtype: None
+        """
+        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api.create_vhost(vhost)
+
+    def _enable_plugin(self, plugin) -> None:
+        """Enable plugin.
+
+        Update self._stored.enabled_plugins list.
+
+        :param plugin: Plugin to enable.
+        :type plugin: str
+        :returns: None
+        :rtype: None
+        """
         if plugin not in self._stored.enabled_plugins:
             self._stored.enabled_plugins.append(plugin)
 
-    def _disable_plugin(self, plugin):
+    def _disable_plugin(self, plugin) -> None:
+        """Disable plugin.
+
+        Update self._stored.enabled_plugins list.
+
+        :param plugin: Plugin to disable.
+        :type plugin: str
+        :returns: None
+        :rtype: None
+        """
         if plugin in self._stored.enabled_plugins:
             self._stored.enabled_plugins.remove(plugin)
 
     @property
-    def hostname(self):
+    def hostname(self) -> str:
+        """Hostname for access to rabbitmq.
+
+        :returns: String IP
+        :rtype: str
+        """
         return self.amqp_bind_address
 
     @property
-    def _rabbitmq_mgmt_url(self):
-        # For now we will use http://localhost
-        # TODO get service or ingress URL for the pod
-        # Internal
-        # f"{self.unit.name}.{self.app.name}-endpoints.{self.model.name}.svc.cluster.local"
-        # External
-        # f"{self.unit.name}.{self.app.name}.{self.model.name}.svc.cluster.local"
+    def _rabbitmq_mgmt_url(self) -> str:
+        """Rabbitmq Management URL
+
+        :returns: String URL
+        :rtype: str
+        """
+        # Use localhost for admin ACL
         return "http://localhost:15672"
 
     @property
     def _operator_password(self) -> Union[str, None]:
+        """Return the operator password.
+
+        If the operator password does not exist on the peer relation, create a
+        new one and update the peer relation. It is necessary to store this on
+        the peer relation so that it is not lost on any one unit's local
+        storage. If the leader is deposed, the new leader continues to have
+        administrative access to the message queue.
+
+        :returns: String password or None
+        :rtype: Unition[str, None]
+        """
         # TODO: For now we are storing this in the peer relation so that all
         # peers have access to it. Move to Kubernetes secrets.
         if not self.peers.operator_password and self.unit.is_leader():
             self.peers.set_operator_password(pwgen.pwgen(12))
         return self.peers.operator_password
 
-    def _get_admin_api(self, username, password):
+    def _get_admin_api(self, username, password) -> rabbitmq_admin.AdminAPI:
+        """Return an administravie API for Rabbitmq.
+
+        :returns: The administravie API object
+        :rtype: rabbitmq_admin.AdminAPI
+        """
         return rabbitmq_admin.AdminAPI(
             url=self._rabbitmq_mgmt_url, auth=(username, password))
 
-    def _initialize_operator_user(self):
+    def _initialize_operator_user(self) -> None:
+        """Initialize the operator administravie user.
+
+        By default, the Rabbitmq admin interface has an administravie user
+        'guest' with password 'guest'. We are exposing the admin interface so we
+        must create a new administravie user and remove the guest user.
+
+        Create the 'operator' administravie user, grant it permissions and tell
+        the peer relation this is done.
+
+        Burn the bridge behind us and remove the guest user.
+
+        :returns: None
+        :rtype: None
+        """
         logging.info("Initializing the operator user.")
         # Use guest to create operator user
         api = self._get_admin_api("guest", "guest")
@@ -265,11 +390,26 @@ class RabbitMQOperatorCharm(CharmBase):
         logging.warning("Deleting the guest user.")
         api.delete_user("guest")
 
-    def _render_and_push_config_files(self):
+    def _render_and_push_config_files(self) -> None:
+        """Render and push configuration files.
+
+        Allow calling one utility function to render and push all required
+        files. Calls specific render and push methods.
+
+        :returns: None
+        :rtype: None
+        """
         self._render_and_push_enabled_plugins()
         self._render_and_push_rabbitmq_conf()
 
-    def _render_and_push_enabled_plugins(self):
+    def _render_and_push_enabled_plugins(self) -> None:
+        """Render and push enabled plugins config.
+
+        Render enabled plugins and push to the workload container.
+
+        :returns: None
+        :rtype: None
+        """
         container = self.unit.get_container(RABBITMQ_CONTAINER)
         enabled_plugins_template = "[{enabled_plugins}]."
         ctxt = {
@@ -279,7 +419,15 @@ class RabbitMQOperatorCharm(CharmBase):
         container.push("/etc/rabbitmq/enabled_plugins", enabled_plugins_template.format(**ctxt))
 
     def _render_and_push_rabbitmq_conf(self):
+        """Render and push rabbitmq conf.
+
+        Render rabbitmq conf and push to the workload container.
+
+        :returns: None
+        :rtype: None
+        """
         container = self.unit.get_container(RABBITMQ_CONTAINER)
+        # TODO: Obviously, there is much more we can configure here.
         rabbitmq_conf_template = """
 # allowing remote connections for default user is highly discouraged
 # as it dramatically decreases the security of the system. Delete the user
@@ -290,8 +438,14 @@ loopback_users = {loopback_users}
         logger.info("Pushing new rabbitmq_conf")
         container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf_template.format(**ctxt))
 
-    def _on_get_operator_info_action(self, event):
-        """Get operator information
+    def _on_get_operator_info_action(self, event) -> None:
+        """Action to get operator user and password information.
+
+        Set event results with operator user and password for accessing the
+        administrative web interface.
+
+        :returns: None
+        :rtype: None
         """
         data = {
             "operator-user": self._operator_user,
@@ -299,7 +453,15 @@ loopback_users = {loopback_users}
         }
         event.set_results(data)
 
-    def _on_update_status(self, event):
+    def _on_update_status(self, event) -> None:
+        """Update status.
+
+        Determine the state of the charm and set workload status.
+
+        :returns: None
+        :rtype: None
+        """
+        # TODO: There is much more we can do here.
         if self.peers.operator_user_created:
             if self.amqp_rel:
                 if self.amqp_rel.data[self.amqp_rel.app].get("vhost"):
