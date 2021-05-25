@@ -7,8 +7,8 @@ import unittest
 from unittest.mock import Mock
 
 from charm import RabbitMQOperatorCharm
-from ops.model import ActiveStatus
 from ops.testing import Harness
+import ops.model
 
 
 class TestCharm(unittest.TestCase):
@@ -25,8 +25,7 @@ class TestCharm(unittest.TestCase):
         self.assertEqual(list(self.harness.charm._stored.enabled_plugins), ["rabbitmq_management"])
 
     def test_action(self):
-        # the harness doesn't (yet!) help much with actions themselves
-        action_event = Mock(params={"fail": ""})
+        action_event = Mock()
         self.harness.charm._on_get_operator_info_action(action_event)
 
         self.assertTrue(action_event.set_results.called)
@@ -57,5 +56,42 @@ class TestCharm(unittest.TestCase):
         # Check the service was started
         service = self.harness.model.unit.get_container("rabbitmq").get_service("rabbitmq-server")
         self.assertTrue(service.is_running())
-        # Ensure we set an ActiveStatus with no message
-        self.assertEqual(self.harness.model.unit.status, ActiveStatus())
+
+    def test_update_status(self):
+        """This test validates the charm, the peers relation and the amqp relation.
+        """
+        self.harness.set_leader(True)
+        self.harness.model.get_binding = Mock()
+        self.harness.charm._get_admin_api = Mock()
+
+        # Early not initialized
+        self.harness.charm.on.update_status.emit()
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ops.model.WaitingStatus('Waiting to initialize operator user'))
+
+        # RabbitMQ is up, operator user initialized
+        peers_relation_id = self.harness.add_relation("peers", "rabbitmq-operator")
+        self.harness.add_relation_unit(peers_relation_id, "rabbitmq-operator/0")
+        self.harness.charm.on.update_status.emit()
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ops.model.WaitingStatus('Ready but waiting for an AMQP client relation.'))
+
+        # AMQP relation incomplete
+        amqp_relation_id = self.harness.add_relation("amqp", "amqp-client-app")
+        self.harness.add_relation_unit(amqp_relation_id, "amqp-client-app/0")
+        self.harness.charm.on.update_status.emit()
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ops.model.WaitingStatus('AMQP relation incomplete'))
+
+        # AMQP relation complete
+        self.harness.update_relation_data(
+            amqp_relation_id, "amqp-client-app",
+            {"username": "client",
+             "vhost": "client-vhost"})
+        self.harness.charm.on.update_status.emit()
+        self.assertEqual(
+            self.harness.model.unit.status,
+            ops.model.ActiveStatus())
