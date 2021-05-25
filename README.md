@@ -1,46 +1,49 @@
-# rabbitmq-operator
+# thedac-rabbitmq-operator
 
 ## Description
 
-Charmed RabbitMQ operator for Kubernetes.
+Charmed [RabbitMQ][rabbitmq-upstream] operator for Kubernetes.
+
 
 ## Usage
 
 ### Deploy
 
+#### Simple deployment
+
 ```
- juju deploy ./rabbitmq-operator.charm --resource rabbitmq-image=rabbitmq
+ juju deploy thedac-rabbitmq-operator --resource rabbitmq-image=rabbitmq
  juju deploy nginx-ingress-integrator
- juju add-relation rabbitmq-operator nginx-ingress-integrator
+ juju add-relation thedac-rabbitmq-operator nginx-ingress-integrator
+```
+Where rabbitmq is a docker hub image for [RabbitMQ][rabbitmq-docker-image]
+
+#### Relate consuming client operators
+
+```
+juju add-relation <app-name>:amqp thedac-rabbitmq-operator:amqp
 ```
 
-
-### Access the RabbitMQ managment web UI
+### Access the RabbitMQ management web UI
 
 ```
  # Let the model settle
+ # Get the ingress service IP
  juju status
- # Get Ingress with service IP
- juju run-action --wait rabbitmq-operator/0 get-operator-info
  # Get user and password for administrive operator user
+ juju run-action --wait thedac-rabbitmq-operator/0 get-operator-info
 ```
  
-In a browser
-* Connect to the Ingresss with service IP 
-* Login with "operator" and the password from get-operator-info
+In a browser:
+* Connect to the ingress service IP and port 15672 
+  * Example: http://10.152.183.37:15672
+* Login with the `operator` user and the password from get-operator-info
+
+### Actions
+
+* `get-operator-info`
 
 
-## Developing
-
-Create and activate a virtualenv with the development requirements:
-
-    virtualenv -p python3 venv
-    source venv/bin/activate
-    pip install -r requirements-dev.txt
-
-## Testing
-
-The Python operator framework includes a very nice harness for testing
-operator behaviour without full deployment. Just `run_tests`:
-
-    ./run_tests
+<!-- LINKS -->
+[rabbitmq-upstream]: https://www.rabbitmq.com/
+[rabbitmq-docker-image]: https://hub.docker.com/_/rabbitmq
