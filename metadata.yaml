@@ -4,6 +4,8 @@ name: thedac-rabbitmq-operator
 description: Rabbitmq
 summary: Rabbitmq charmed operator for Kubernetes
 
+docs: https://discourse.charmhub.io/t/thedac-rabbitmq-operator-docs-index/4630
+
 containers:
   rabbitmq:
     resource: rabbitmq-image
