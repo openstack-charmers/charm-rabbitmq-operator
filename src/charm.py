@@ -47,14 +47,13 @@ class RabbitMQOperatorCharm(CharmBase):
         self.framework.observe(self.on.update_status, self._on_update_status)
         # Peers
         self.peers = interface_rabbitmq_operator_peers.RabbitMQOperatorPeers(self, "peers")
-        self.framework.observe(self.peers.on.has_peers, self._on_has_peers)
+        self.framework.observe(
+            self.peers.on.peers_relation_created, self._on_peers_relation_created)
         # AMQP Provides
         self.amqp_provider = (RabbitMQAMQPProvides(self, "amqp"))
         self.framework.observe(
             self.amqp_provider.on.ready_amqp_clients, self._on_ready_amqp_clients)
 
-        self._stored.set_default(users={})
-        self._stored.set_default(operator={})
         self._stored.set_default(enabled_plugins=[])
 
         self.ingress_mgmt = IngressRequires(self, {
@@ -116,20 +115,6 @@ class RabbitMQOperatorCharm(CharmBase):
             container.start(RABBITMQ_SERVER_SERVICE)
             logging.info("Restarted rabbitmq-service service")
 
-        if (not self.peers.operator_user_created and
-                self.unit.is_leader()):
-            # Generate the operator user/password
-            logging.info("Attempting to initilize operator user.")
-            try:
-                self._initialize_operator_user()
-            except requests.exceptions.HTTPError as e:
-                if e.errno == 401:
-                    logging.error("Athorization failed")
-                    raise e
-            except requests.exceptions.ConnectionError as e:
-                logging.warning("Rabbitmq is not ready. Defering. Errno: {}".format(e.errno))
-                event.defer()
-
         self._on_update_status(event)
 
     def _rabbitmq_layer(self) -> dict:
@@ -151,8 +136,8 @@ class RabbitMQOperatorCharm(CharmBase):
             },
         }
 
-    def _on_has_peers(self, event) -> None:
-        """Event handler on has peers.
+    def _on_peers_relation_created(self, event) -> None:
+        """Event handler on peers relation created.
 
         :returns: None
         :rtype: None
@@ -161,18 +146,22 @@ class RabbitMQOperatorCharm(CharmBase):
         if (not self.peers.operator_user_created and
                 self.unit.is_leader()):
 
-            logging.info("Attempting to initilize from on has peers.")
+            logging.debug("Attempting to initialize from on peers relation created.")
             # Generate the operator user/password
             try:
                 self._initialize_operator_user()
+                logging.debug("Operator user initialized.")
             except requests.exceptions.HTTPError as e:
                 if e.errno == 401:
-                    logging.error("Athorization failed")
+                    logging.error("Authorization failed")
                     raise e
             except requests.exceptions.ConnectionError as e:
-                logging.warning(
-                    "Rabbitmq is not ready. Defering. Errno: {}".format(e.response.status_code))
-                event.defer()
+                if "Caused by NewConnectionError" in e.__str__():
+                    logging.warning(
+                        "Rabbitmq is not ready. Deferring. {}".format(e.__str__()))
+                    event.defer()
+                else:
+                    raise e
         self._on_update_status(event)
 
     def _on_ready_amqp_clients(self, event) -> None:
@@ -471,7 +460,7 @@ loopback_users = {loopback_users}
             else:
                 self.unit.status = WaitingStatus("Ready but waiting for an AMQP client relation.")
         else:
-            self.unit.status = WaitingStatus("Waiting to initilaize operator user")
+            self.unit.status = WaitingStatus("Waiting to initialize operator user")
 
 
 if __name__ == "__main__":

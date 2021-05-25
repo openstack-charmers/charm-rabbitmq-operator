@@ -14,6 +14,11 @@ from ops.framework import (
     Object)
 
 
+class PeersCreatedEvent(EventBase):
+    """Peers Created Event."""
+    pass
+
+
 class HasPeersEvent(EventBase):
     """Has Peers Event."""
     pass
@@ -23,14 +28,15 @@ class ReadyPeersEvent(EventBase):
     pass
 
 
-class RabbitMQOperatorPeerEvents(ObjectEvents):
+class RabbitMQOperatorPeersEvents(ObjectEvents):
+    peers_relation_created = EventSource(PeersCreatedEvent)
     has_peers = EventSource(HasPeersEvent)
     ready_peers = EventSource(ReadyPeersEvent)
 
 
 class RabbitMQOperatorPeers(Object):
 
-    on = RabbitMQOperatorPeerEvents()
+    on = RabbitMQOperatorPeersEvents()
     state = StoredState()
     OPERATOR_PASSWORD = "operator_password"
     OPERATOR_USER_CREATED = "operator_user_created"
@@ -38,6 +44,9 @@ class RabbitMQOperatorPeers(Object):
     def __init__(self, charm, relation_name):
         super().__init__(charm, relation_name)
         self.relation_name = relation_name
+        self.framework.observe(
+            charm.on[relation_name].relation_created,
+            self.on_created)
         self.framework.observe(
             charm.on[relation_name].relation_joined,
             self.on_joined)
@@ -48,6 +57,10 @@ class RabbitMQOperatorPeers(Object):
     @property
     def peers_rel(self):
         return self.framework.model.get_relation(self.relation_name)
+
+    def on_created(self, event):
+        logging.info("RabbitMQOperatorPeers on_created")
+        self.on.peers_relation_created.emit()
 
     def on_joined(self, event):
         logging.info("RabbitMQOperatorPeers on_joined")

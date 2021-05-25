@@ -272,7 +272,7 @@ class RabbitMQAMQPProvides(Object):
         :type EventsBase
         :param username: The requested username
         :type username: str
-        :param vhost: The requested username
+        :param vhost: The requested vhost
         :type vhost: str
         :returns: None
         :rtype: None
