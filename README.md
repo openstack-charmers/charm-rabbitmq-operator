@@ -4,6 +4,12 @@
 
 Charmed [RabbitMQ][rabbitmq-upstream] operator for Kubernetes.
 
+RabbitMQ is an open source multi-protocol messaging broker. The charmed
+RabbitMQ operator deploys RabbitMQ as a workload on Kubernetes. It grants
+access to the RabbitMQ management web interface. Having the operator charmed
+allows for consuming charmed applications to simply add a relation in order to
+begin using the message broker immediately.
+
 
 ## Usage
 

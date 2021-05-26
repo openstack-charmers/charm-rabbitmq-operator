@@ -4,7 +4,7 @@
 #
 # Learn more at: https://juju.is/docs/sdk
 
-"""Rabbitmq Operator Charm
+"""RabbitMQ Operator Charm
 """
 
 import logging
@@ -75,7 +75,7 @@ class RabbitMQOperatorCharm(CharmBase):
             logging.info("Autostarting rabbitmq")
             container.autostart()
         else:
-            logging.debug("Rabbitmq service is running")
+            logging.debug("RabbitMQ service is running")
         self._on_update_status(event)
 
     def _on_config_changed(self, event) -> None:
@@ -116,7 +116,7 @@ class RabbitMQOperatorCharm(CharmBase):
         self._on_update_status(event)
 
     def _rabbitmq_layer(self) -> dict:
-        """Rabbitmq layer definition.
+        """RabbitMQ layer definition.
 
         :returns: Pebble layer configuration
         :rtype: dict
@@ -156,7 +156,7 @@ class RabbitMQOperatorCharm(CharmBase):
             except requests.exceptions.ConnectionError as e:
                 if "Caused by NewConnectionError" in e.__str__():
                     logging.warning(
-                        "Rabbitmq is not ready. Deferring. {}".format(e.__str__()))
+                        "RabbitMQ is not ready. Deferring. {}".format(e.__str__()))
                     event.defer()
                 else:
                     raise e
@@ -316,7 +316,7 @@ class RabbitMQOperatorCharm(CharmBase):
 
     @property
     def _rabbitmq_mgmt_url(self) -> str:
-        """Rabbitmq Management URL
+        """RabbitMQ Management URL
 
         :returns: String URL
         :rtype: str
@@ -344,7 +344,7 @@ class RabbitMQOperatorCharm(CharmBase):
         return self.peers.operator_password
 
     def _get_admin_api(self, username, password) -> rabbitmq_admin.AdminAPI:
-        """Return an administravie API for Rabbitmq.
+        """Return an administravie API for RabbitMQ.
 
         :returns: The administravie API object
         :rtype: rabbitmq_admin.AdminAPI
@@ -355,7 +355,7 @@ class RabbitMQOperatorCharm(CharmBase):
     def _initialize_operator_user(self) -> None:
         """Initialize the operator administravie user.
 
-        By default, the Rabbitmq admin interface has an administravie user
+        By default, the RabbitMQ admin interface has an administravie user
         'guest' with password 'guest'. We are exposing the admin interface so we
         must create a new administravie user and remove the guest user.
 
