@@ -1,15 +1,10 @@
 #!/usr/bin/env python3
-# Copyright 2021 David
+# Copyright 2021 David Ames
 # See LICENSE file for licensing details.
 #
 # Learn more at: https://juju.is/docs/sdk
 
-"""Charm the service.
-
-Refer to the following post for a quick-start guide that will help you
-develop a new k8s charm using the Operator Framework:
-
-    https://discourse.charmhub.io/t/4208
+"""Rabbitmq Operator Charm
 """
 
 import logging
