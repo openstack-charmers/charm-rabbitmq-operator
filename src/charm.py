@@ -72,6 +72,9 @@ class RabbitMQOperatorCharm(CharmBase):
         container = event.workload
         # Add intial Pebble config layer using the Pebble API
         container.add_layer("rabbitmq", self._rabbitmq_layer(), combine=True)
+
+        self._render_and_push_config_files()
+
         # Autostart any services that were defined with startup: enabled
         if not container.get_service(RABBITMQ_SERVER_SERVICE).is_running():
             logging.info("Autostarting rabbitmq")
