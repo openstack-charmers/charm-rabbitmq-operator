@@ -312,7 +312,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: String IP
         :rtype: str
         """
-        return self.amqp_bind_address
+        return f"{self.app.name}-endpoints.{self.model.name}.svc.cluster.local"
 
     @property
     def _rabbitmq_mgmt_url(self) -> str:
