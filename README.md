@@ -18,11 +18,10 @@ begin using the message broker immediately.
 #### Simple deployment
 
 ```
- juju deploy thedac-rabbitmq-operator --resource rabbitmq-image=rabbitmq
+ juju deploy thedac-rabbitmq-operator
  juju deploy nginx-ingress-integrator
  juju add-relation thedac-rabbitmq-operator nginx-ingress-integrator
 ```
-Where rabbitmq is a docker hub image for [RabbitMQ][rabbitmq-docker-image]
 
 #### Relate consuming client operators
 
