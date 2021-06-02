@@ -91,7 +91,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 2
+LIBPATCH = 3
 
 import logging
 import requests
@@ -173,7 +173,7 @@ class RabbitMQAMQPRequires(Object):
 
     def password(self, event):
         """Return the AMQP password from the server side of the relation."""
-        return event.relation.data[self._amqp_rel.app].get("password")
+        return event.relation.data[event.relation.app].get("password")
 
     def request_access(self, event, username, vhost):
         """Request access to the AMQP server.
@@ -230,11 +230,6 @@ class RabbitMQAMQPProvides(Object):
             self.charm.on[relation_name].relation_broken, self._on_amqp_relation_broken
         )
 
-    @property
-    def _amqp_rel(self):
-        """This AMQP relationship."""
-        return self.framework.model.get_relation(self.relation_name)
-
     def _on_amqp_relation_joined(self, event):
         """Handle AMQP joined."""
         logging.debug("RabbitMQAMQPProvides on_joined")
@@ -259,11 +254,11 @@ class RabbitMQAMQPProvides(Object):
 
     def username(self, event):
         """Return the AMQP username from the client side of the relation."""
-        return event.relation.data[self._amqp_rel.app].get("username")
+        return event.relation.data[event.relation.app].get("username")
 
     def vhost(self, event):
         """Return the AMQP vhost from the client side of the relation."""
-        return event.relation.data[self._amqp_rel.app].get("vhost")
+        return event.relation.data[event.relation.app].get("vhost")
 
     def set_amqp_credentials(self, event, username, vhost):
         """Set AMQP Credentials.

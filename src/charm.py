@@ -177,7 +177,9 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: Pebble layer configuration
         :rtype: ops.model.Relation
         """
-        return self.framework.model.get_relation("amqp")
+        for amqp in self.framework.model.relations["amqp"]:
+            # We only care about one relation. Returning the first.
+            return amqp
 
     @property
     def amqp_bind_address(self) -> str:
