@@ -18,7 +18,7 @@ from charms.thedac_rabbitmq_operator.v0.amqp import RabbitMQAMQPProvides
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
-from ops.model import ActiveStatus, WaitingStatus, Relation
+from ops.model import ActiveStatus, BlockedStatus, WaitingStatus, Relation
 from ops.pebble import PathError
 import interface_rabbitmq_operator_peers
 
@@ -89,17 +89,16 @@ class RabbitMQOperatorCharm(CharmBase):
         # Add intial Pebble config layer using the Pebble API
         container.add_layer("rabbitmq", self._rabbitmq_layer(), combine=True)
 
-        # Ensure that erlang cookie is consistent across followers
-        if not self.unit.is_leader():
-            if self.peers.erlang_cookie:
-                container.push(
-                    RABBITMQ_COOKIE_PATH,
-                    self.peers.erlang_cookie,
-                    permissions=0o600,
-                )
-            else:
-                event.defer()
-                return
+        # Ensure that erlang cookie is consistent across units
+        if not self.unit.is_leader() and not self.peers.erlang_cookie:
+            event.defer()
+
+        if self.peers.erlang_cookie:
+            container.push(
+                RABBITMQ_COOKIE_PATH,
+                self.peers.erlang_cookie,
+                permissions=0o600,
+            )
 
         # Autostart any services that were defined with startup: enabled
         if not container.get_service(RABBITMQ_SERVER_SERVICE).is_running():
@@ -125,9 +124,8 @@ class RabbitMQOperatorCharm(CharmBase):
         # Get the current config
         plan = container.get_plan()
         if not plan.services or (
-            plan.services[RABBITMQ_SERVER_SERVICE].to_dict()
-            != layer["services"][RABBITMQ_SERVER_SERVICE]
-        ):
+                plan.services[RABBITMQ_SERVER_SERVICE].to_dict() !=
+                layer["services"][RABBITMQ_SERVER_SERVICE]):
             # Changes were made, add the new layer
             container.add_layer("rabbitmq", layer, combine=True)
             logging.info("Added updated layer 'rabbitmq' to Pebble plan")
@@ -177,6 +175,7 @@ class RabbitMQOperatorCharm(CharmBase):
                 logging.debug(
                     "RabbitMQ not started, deferring cookie provision"
                 )
+                event.defer()
 
         if not self.peers.operator_user_created and self.unit.is_leader():
             logging.debug(
@@ -528,23 +527,27 @@ USE_LONGNAME=true
         :returns: None
         :rtype: None
         """
-        # TODO: There is much more we can do here.
-        if self.peers.operator_user_created:
-            if self.amqp_rel:
-                if self.amqp_rel.data[self.amqp_rel.app].get("vhost"):
-                    self.unit.status = ActiveStatus()
-                else:
-                    self.unit.status = WaitingStatus(
-                        "AMQP relation incomplete"
-                    )
-            else:
-                self.unit.status = WaitingStatus(
-                    "Ready but waiting for an AMQP client relation."
-                )
-        else:
+        if not self.peers.operator_user_created:
             self.unit.status = WaitingStatus(
-                "Waiting to initialize operator user"
+                "Waiting for leader to create operator user"
             )
+            return
+
+        if not self.peers.erlang_cookie:
+            self.unit.status = WaitingStatus(
+                "Waiting for leader to provide erlang cookie"
+            )
+            return
+
+        try:
+            api = self._get_admin_api(self._operator_user, self._operator_password)
+        except requests.exceptions.ConnectionError:
+            self.unit.status = BlockedStatus(
+                "RabbitMQ not running"
+            )
+            return
+
+        self.unit.status = ActiveStatus()
 
 
 if __name__ == "__main__":
