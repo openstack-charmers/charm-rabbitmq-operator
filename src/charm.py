@@ -19,12 +19,14 @@ from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
 from ops.model import ActiveStatus, WaitingStatus, Relation
+from ops.pebble import PathError
 import interface_rabbitmq_operator_peers
 
 logger = logging.getLogger(__name__)
 
 RABBITMQ_CONTAINER = "rabbitmq"
 RABBITMQ_SERVER_SERVICE = "rabbitmq-server"
+RABBITMQ_COOKIE_PATH = "/var/lib/rabbitmq/.erlang.cookie"
 
 
 class RabbitMQOperatorCharm(CharmBase):
@@ -36,26 +38,42 @@ class RabbitMQOperatorCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
 
-        self.framework.observe(self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready)
+        self.framework.observe(
+            self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready
+        )
         self.framework.observe(self.on.config_changed, self._on_config_changed)
-        self.framework.observe(self.on.get_operator_info_action, self._on_get_operator_info_action)
+        self.framework.observe(
+            self.on.get_operator_info_action, self._on_get_operator_info_action
+        )
         self.framework.observe(self.on.update_status, self._on_update_status)
         # Peers
-        self.peers = interface_rabbitmq_operator_peers.RabbitMQOperatorPeers(self, "peers")
+        self.peers = interface_rabbitmq_operator_peers.RabbitMQOperatorPeers(
+            self, "peers"
+        )
         self.framework.observe(
-            self.peers.on.peers_relation_created, self._on_peers_relation_created)
+            self.peers.on.peers_relation_created,
+            self._on_peers_relation_created,
+        )
         # AMQP Provides
-        self.amqp_provider = (RabbitMQAMQPProvides(self, "amqp"))
+        self.amqp_provider = RabbitMQAMQPProvides(self, "amqp")
         self.framework.observe(
-            self.amqp_provider.on.ready_amqp_clients, self._on_ready_amqp_clients)
+            self.amqp_provider.on.ready_amqp_clients,
+            self._on_ready_amqp_clients,
+        )
 
         self._stored.set_default(enabled_plugins=[])
 
-        self.ingress_mgmt = IngressRequires(self, {
-            "service-hostname": "rabbitmq-management.juju",
-            "service-name": self.app.name,
-            "service-port": 15672
-        })
+        self.ingress_mgmt = IngressRequires(
+            self,
+            {
+                "service-hostname": "rabbitmq-management.juju",
+                "service-name": self.app.name,
+                "service-port": 15672,
+            },
+        )
+
+        self._enable_plugin("rabbitmq_management")
+        self._enable_plugin("rabbitmq_peer_discovery_k8s")
 
     def _on_rabbitmq_pebble_ready(self, event) -> None:
         """Define and start rabbitmq workload using the Pebble API.
@@ -63,12 +81,25 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
+        # Push all configuration files to the container first
+        self._render_and_push_config_files()
+
         # Get a reference the container attribute on the PebbleReadyEvent
         container = event.workload
         # Add intial Pebble config layer using the Pebble API
         container.add_layer("rabbitmq", self._rabbitmq_layer(), combine=True)
 
-        self._render_and_push_config_files()
+        # Ensure that erlang cookie is consistent across followers
+        if not self.unit.is_leader():
+            if self.peers.erlang_cookie:
+                container.push(
+                    RABBITMQ_COOKIE_PATH,
+                    self.peers.erlang_cookie,
+                    permissions=0o600,
+                )
+            else:
+                event.defer()
+                return
 
         # Autostart any services that were defined with startup: enabled
         if not container.get_service(RABBITMQ_SERVER_SERVICE).is_running():
@@ -84,13 +115,6 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
-        management_plugin = self.config["management_plugin"]
-        if management_plugin:
-            logger.info("Enabling mangement_plugin {}")
-            self._enable_plugin("rabbitmq_management")
-        else:
-            self._disable_plugin("rabbitmq_management")
-
         # Render and push configuration files
         self._render_and_push_config_files()
 
@@ -101,8 +125,9 @@ class RabbitMQOperatorCharm(CharmBase):
         # Get the current config
         plan = container.get_plan()
         if not plan.services or (
-                plan.services[RABBITMQ_SERVER_SERVICE].to_dict() !=
-                layer["services"][RABBITMQ_SERVER_SERVICE]):
+            plan.services[RABBITMQ_SERVER_SERVICE].to_dict()
+            != layer["services"][RABBITMQ_SERVER_SERVICE]
+        ):
             # Changes were made, add the new layer
             container.add_layer("rabbitmq", layer, combine=True)
             logging.info("Added updated layer 'rabbitmq' to Pebble plan")
@@ -122,8 +147,8 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: dict
         """
         return {
-            "summary": "rabbitmq layer",
-            "description": "pebble config layer for rabbitmq",
+            "summary": "RabbitMQ layer",
+            "description": "pebble config layer for RabbitMQ",
             "services": {
                 RABBITMQ_SERVER_SERVICE: {
                     "override": "replace",
@@ -141,10 +166,22 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: None
         """
         logging.info("Peer relation instantiated.")
-        if (not self.peers.operator_user_created and
-                self.unit.is_leader()):
+        if not self.peers.erlang_cookie and self.unit.is_leader():
+            logging.debug("Providing erlang cookie to cluster")
+            container = self.unit.get_container(RABBITMQ_CONTAINER)
+            try:
+                with container.pull(RABBITMQ_COOKIE_PATH) as cfile:
+                    erlang_cookie = cfile.read().rstrip()
+                self.peers.set_erlang_cookie(erlang_cookie)
+            except PathError:
+                logging.debug(
+                    "RabbitMQ not started, deferring cookie provision"
+                )
 
-            logging.debug("Attempting to initialize from on peers relation created.")
+        if not self.peers.operator_user_created and self.unit.is_leader():
+            logging.debug(
+                "Attempting to initialize from on peers relation created."
+            )
             # Generate the operator user/password
             try:
                 self._initialize_operator_user()
@@ -156,7 +193,10 @@ class RabbitMQOperatorCharm(CharmBase):
             except requests.exceptions.ConnectionError as e:
                 if "Caused by NewConnectionError" in e.__str__():
                     logging.warning(
-                        "RabbitMQ is not ready. Deferring. {}".format(e.__str__()))
+                        "RabbitMQ is not ready. Deferring. {}".format(
+                            e.__str__()
+                        )
+                    )
                     event.defer()
                 else:
                     raise e
@@ -188,8 +228,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: Pebble layer configuration
         :rtype: str
         """
-        return str(
-            self.model.get_binding(self.amqp_rel).network.bind_address)
+        return str(self.model.get_binding("amqp").network.bind_address)
 
     def does_user_exist(self, username) -> Union[str, None]:
         """Does the username exist in rabbitmq?
@@ -249,8 +288,8 @@ class RabbitMQOperatorCharm(CharmBase):
         return _password
 
     def set_user_permissions(
-            self, username, vhost,
-            configure=".*", write=".*", read=".*") -> None:
+        self, username, vhost, configure=".*", write=".*", read=".*"
+    ) -> None:
         """Set user permissions.
 
         Return the password for the user.
@@ -268,7 +307,8 @@ class RabbitMQOperatorCharm(CharmBase):
         """
         api = self._get_admin_api(self._operator_user, self._operator_password)
         api.create_user_permission(
-            username, vhost, configure=configure, write=write, read=read)
+            username, vhost, configure=configure, write=write, read=read
+        )
 
     def create_vhost(self, vhost) -> None:
         """Create vhost in rabbitmq.
@@ -352,7 +392,8 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: rabbitmq_admin.AdminAPI
         """
         return rabbitmq_admin.AdminAPI(
-            url=self._rabbitmq_mgmt_url, auth=(username, password))
+            url=self._rabbitmq_mgmt_url, auth=(username, password)
+        )
 
     def _initialize_operator_user(self) -> None:
         """Initialize the operator administravie user.
@@ -372,7 +413,11 @@ class RabbitMQOperatorCharm(CharmBase):
         logging.info("Initializing the operator user.")
         # Use guest to create operator user
         api = self._get_admin_api("guest", "guest")
-        api.create_user(self._operator_user, self._operator_password, tags=["administrator"])
+        api.create_user(
+            self._operator_user,
+            self._operator_password,
+            tags=["administrator"],
+        )
         api.create_user_permission(self._operator_user, vhost="/")
         self.peers.set_operator_user_created(self._operator_user)
         # Burn the bridge behind us. We do not want to leave a known user/pass available
@@ -390,6 +435,7 @@ class RabbitMQOperatorCharm(CharmBase):
         """
         self._render_and_push_enabled_plugins()
         self._render_and_push_rabbitmq_conf()
+        self._render_and_push_rabbitmq_env()
 
     def _render_and_push_enabled_plugins(self) -> None:
         """Render and push enabled plugins config.
@@ -400,12 +446,12 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: None
         """
         container = self.unit.get_container(RABBITMQ_CONTAINER)
-        enabled_plugins_template = "[{enabled_plugins}]."
-        ctxt = {
-            "enabled_plugins": ","
-            .join(self._stored.enabled_plugins)}
+        enabled_plugins = ",".join(self._stored.enabled_plugins)
+        enabled_plugins_template = f"[{enabled_plugins}]."
         logger.info("Pushing new enabled_plugins")
-        container.push("/etc/rabbitmq/enabled_plugins", enabled_plugins_template.format(**ctxt))
+        container.push(
+            "/etc/rabbitmq/enabled_plugins", enabled_plugins_template
+        )
 
     def _render_and_push_rabbitmq_conf(self):
         """Render and push rabbitmq conf.
@@ -416,16 +462,48 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: None
         """
         container = self.unit.get_container(RABBITMQ_CONTAINER)
-        # TODO: Obviously, there is much more we can configure here.
-        rabbitmq_conf_template = """
+        loopback_users = "none"
+        rabbitmq_conf = f"""
 # allowing remote connections for default user is highly discouraged
 # as it dramatically decreases the security of the system. Delete the user
 # instead and create a new one with generated secure credentials.
 loopback_users = {loopback_users}
+
+# enable k8s clustering
+cluster_formation.peer_discovery_backend = k8s
+
+# SSL access to K8S API
+cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
+cluster_formation.k8s.port = 443
+cluster_formation.k8s.scheme = https
+cluster_formation.k8s.service_name = {self.app.name}
+
+# Cluster cleanup and autoheal
+cluster_formation.node_cleanup.interval = 30
+cluster_formation.node_cleanup.only_log_warning = true
+cluster_partition_handling = autoheal
+
+queue_master_locator = min-masters
 """
-        ctxt = {"loopback_users": "none"}
-        logger.info("Pushing new rabbitmq_conf")
-        container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf_template.format(**ctxt))
+        logger.info("Pushing new rabbitmq.conf")
+        container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf)
+
+    def _render_and_push_rabbitmq_env(self):
+        """Render and push rabbitmq-env conf.
+
+        Render rabbitmq-env conf and push to the workload container.
+
+        :returns: None
+        :rtype: None
+        """
+        container = self.unit.get_container(RABBITMQ_CONTAINER)
+        rabbitmq_env = f"""
+# Sane configuration defaults for running under K8S
+NODENAME=rabbit@{self.amqp_bind_address}
+USE_LONGNAME=true
+"""
+        logger.info("Pushing new rabbitmq-env.conf")
+        container.push("/etc/rabbitmq/rabbitmq-env.conf", rabbitmq_env)
 
     def _on_get_operator_info_action(self, event) -> None:
         """Action to get operator user and password information.
@@ -456,11 +534,17 @@ loopback_users = {loopback_users}
                 if self.amqp_rel.data[self.amqp_rel.app].get("vhost"):
                     self.unit.status = ActiveStatus()
                 else:
-                    self.unit.status = WaitingStatus("AMQP relation incomplete")
+                    self.unit.status = WaitingStatus(
+                        "AMQP relation incomplete"
+                    )
             else:
-                self.unit.status = WaitingStatus("Ready but waiting for an AMQP client relation.")
+                self.unit.status = WaitingStatus(
+                    "Ready but waiting for an AMQP client relation."
+                )
         else:
-            self.unit.status = WaitingStatus("Waiting to initialize operator user")
+            self.unit.status = WaitingStatus(
+                "Waiting to initialize operator user"
+            )
 
 
 if __name__ == "__main__":
