@@ -2,7 +2,3 @@
 # See LICENSE file for licensing details.
 
 options:
-  management_plugin:
-    type: boolean
-    default: True
-    description: Enable the management plugin.
