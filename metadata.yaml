@@ -1,8 +1,8 @@
 # Copyright 2021 David Ames
 # See LICENSE file for licensing details.
 name: jamespage-rabbitmq-operator
-description: Rabbitmq
-summary: Rabbitmq charmed operator for Kubernetes
+description: RabbitMQ
+summary: RabbitMQ charmed operator for Kubernetes
 
 docs: https://discourse.charmhub.io/t/thedac-rabbitmq-operator-docs-index/4630
 
