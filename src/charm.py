@@ -11,6 +11,7 @@ import logging
 import pwgen
 import rabbitmq_admin
 import requests
+import tenacity
 from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
@@ -62,6 +63,9 @@ class RabbitMQOperatorCharm(CharmBase):
         )
 
         self._stored.set_default(enabled_plugins=[])
+        self._stored.set_default(pebble_ready=False)
+        self._stored.set_default(rmq_started=False)
+        self._stored.set_default(rabbitmq_version=None)
 
         self.ingress_mgmt = IngressRequires(
             self,
@@ -81,18 +85,31 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
-        # Push all configuration files to the container first
-        self._render_and_push_config_files()
+        self._stored.pebble_ready = True
 
-        # Get a reference the container attribute on the PebbleReadyEvent
-        container = event.workload
-        # Add intial Pebble config layer using the Pebble API
-        container.add_layer("rabbitmq", self._rabbitmq_layer(), combine=True)
+    def _on_config_changed(self, event) -> None:
+        """Update configuration for RabbitMQ
+
+        :returns: None
+        :rtype: None
+        """
+        # Ensure rabbitmq container is up and pebble is ready
+        if not self._stored.pebble_ready:
+            event.defer()
+            return
 
         # Ensure that erlang cookie is consistent across units
         if not self.unit.is_leader() and not self.peers.erlang_cookie:
             event.defer()
+            return
 
+        # Render and push configuration files
+        self._render_and_push_config_files()
+
+        # Get the rabbitmq container so we can configure/manipulate it
+        container = self.unit.get_container(RABBITMQ_CONTAINER)
+
+        # Ensure erlang cookie is consistent
         if self.peers.erlang_cookie:
             container.push(
                 RABBITMQ_COOKIE_PATH,
@@ -100,42 +117,24 @@ class RabbitMQOperatorCharm(CharmBase):
                 permissions=0o600,
             )
 
+        # Add intial Pebble config layer using the Pebble API
+        container.add_layer("rabbitmq", self._rabbitmq_layer(), combine=True)
+
         # Autostart any services that were defined with startup: enabled
         if not container.get_service(RABBITMQ_SERVER_SERVICE).is_running():
             logging.info("Autostarting rabbitmq")
             container.autostart()
         else:
             logging.debug("RabbitMQ service is running")
-        self._on_update_status(event)
 
-    def _on_config_changed(self, event) -> None:
-        """Config changed.
+        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, min=4, max=10))
+        def _check_rmq_running():
+            logging.info('Waiting for RabbitMQ to start')
+            if not self.rabbit_running:
+                raise tenacity.TryAgain()
 
-        :returns: None
-        :rtype: None
-        """
-        # Render and push configuration files
-        self._render_and_push_config_files()
-
-        # Get the rabbitmq container so we can configure/manipulate it
-        container = self.unit.get_container(RABBITMQ_CONTAINER)
-        # Create a new config layer
-        layer = self._rabbitmq_layer()
-        # Get the current config
-        plan = container.get_plan()
-        if not plan.services or (
-                plan.services[RABBITMQ_SERVER_SERVICE].to_dict() !=
-                layer["services"][RABBITMQ_SERVER_SERVICE]):
-            # Changes were made, add the new layer
-            container.add_layer("rabbitmq", layer, combine=True)
-            logging.info("Added updated layer 'rabbitmq' to Pebble plan")
-            # Stop the service if it is already running
-            if container.get_service(RABBITMQ_SERVER_SERVICE).is_running():
-                container.stop(RABBITMQ_SERVER_SERVICE)
-            # Restart it and report a new status to Juju
-            container.start(RABBITMQ_SERVER_SERVICE)
-            logging.info("Restarted rabbitmq-service service")
-
+        _check_rmq_running()
+        self._stored.rmq_started = True
         self._on_update_status(event)
 
     def _rabbitmq_layer(self) -> dict:
@@ -163,7 +162,13 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
+        # Defer any peer relation setup until RMQ is actually running
+        if not self._stored.rmq_started:
+            event.defer()
+            return
+
         logging.info("Peer relation instantiated.")
+
         if not self.peers.erlang_cookie and self.unit.is_leader():
             logging.debug("Providing erlang cookie to cluster")
             container = self.unit.get_container(RABBITMQ_CONTAINER)
@@ -199,6 +204,7 @@ class RabbitMQOperatorCharm(CharmBase):
                     event.defer()
                 else:
                     raise e
+
         self._on_update_status(event)
 
     def _on_ready_amqp_clients(self, event) -> None:
@@ -384,6 +390,27 @@ class RabbitMQOperatorCharm(CharmBase):
             self.peers.set_operator_password(pwgen.pwgen(12))
         return self.peers.operator_password
 
+    @property
+    def rabbit_running(self) -> bool:
+        """Check whether RabbitMQ is running by checking its API
+
+        :returns: whether service is up and running
+        :rtype: bool
+        """
+        try:
+            if self.peers.operator_user_created:
+                # Use operator once created
+                api = self._get_admin_api(self._operator_user, self._operator_password)
+            else:
+                # Fallback to guest user during early charm lifecycle
+                api = self._get_admin_api("guest", "guest")
+            # Cache product version from overview check for later use
+            overview = api.overview()
+            self._stored.rabbitmq_version = overview.get('product_version')
+        except requests.exceptions.ConnectionError:
+            return False
+        return True
+
     def _get_admin_api(self, username, password) -> rabbitmq_admin.AdminAPI:
         """Return an administravie API for RabbitMQ.
 
@@ -539,14 +566,14 @@ USE_LONGNAME=true
             )
             return
 
-        try:
-            api = self._get_admin_api(self._operator_user, self._operator_password)
-        except requests.exceptions.ConnectionError:
+        if not self.rabbit_running:
             self.unit.status = BlockedStatus(
                 "RabbitMQ not running"
             )
             return
 
+        if self._stored.rabbitmq_version:
+            self.unit.set_workload_version(self._stored.rabbitmq_version)
         self.unit.status = ActiveStatus()
 
 
