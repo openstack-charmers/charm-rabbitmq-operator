@@ -1,6 +1,6 @@
 # Copyright 2021 David Ames
 # See LICENSE file for licensing details.
-name: jamespage-rabbitmq-operator
+name: sunbeam-rabbitmq-operator
 description: RabbitMQ
 summary: RabbitMQ charmed operator for Kubernetes
 
