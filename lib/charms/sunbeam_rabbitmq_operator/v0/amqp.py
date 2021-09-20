@@ -20,9 +20,7 @@ Two events are also available to respond to:
 A basic example showing the usage of this relation follows:
 
 ```
-from charms.thedac_rabbitmq_operator.v0.amqp import RabbitMQAMQPRequires
-
-...
+from charms.sunbeam_rabbitmq_operator.v0.amqp import RabbitMQAMQPRequires
 
 class AMQPClientCharm(CharmBase):
     def __init__(self, *args):
@@ -187,9 +185,10 @@ class RabbitMQAMQPRequires(Object):
         :returns: None
         :rtype: None
         """
-        logging.debug("Requesting AMQP user and vhost")
-        event.relation.data[self.charm.app]['username'] = username
-        event.relation.data[self.charm.app]['vhost'] = vhost
+        if self.model.unit.is_leader():
+            logging.debug("Requesting AMQP user and vhost")
+            event.relation.data[self.charm.app]['username'] = username
+            event.relation.data[self.charm.app]['vhost'] = vhost
 
 
 class HasAMQPClientsEvent(EventBase):

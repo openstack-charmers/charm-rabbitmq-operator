@@ -15,7 +15,7 @@ import tenacity
 from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
-from charms.thedac_rabbitmq_operator.v0.amqp import RabbitMQAMQPProvides
+from charms.sunbeam_rabbitmq_operator.v0.amqp import RabbitMQAMQPProvides
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
