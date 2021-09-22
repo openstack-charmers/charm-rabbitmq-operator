@@ -43,6 +43,7 @@ class RabbitMQOperatorCharm(CharmBase):
             self.on.rabbitmq_pebble_ready, self._on_rabbitmq_pebble_ready
         )
         self.framework.observe(self.on.config_changed, self._on_config_changed)
+        self.framework.observe(self.on.upgrade_charm, self._on_upgrade_charm)
         self.framework.observe(
             self.on.get_operator_info_action, self._on_get_operator_info_action
         )
@@ -86,6 +87,18 @@ class RabbitMQOperatorCharm(CharmBase):
         :rtype: None
         """
         self._stored.pebble_ready = True
+        self._on_config_changed(event)
+
+    def _on_upgrade_charm(self, event) -> None:
+        """Update configuration for RabbitMQ
+
+        :returns: None
+        :rtype: None
+        """
+        # NOTE:
+        # as the charm upgrades, the workload container will also
+        # refresh so pebble will no longer be ready!
+        self._stored.pebble_ready = False
 
     def _on_config_changed(self, event) -> None:
         """Update configuration for RabbitMQ
