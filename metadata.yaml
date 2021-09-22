@@ -11,7 +11,7 @@ containers:
     resource: rabbitmq-image
     mounts:
       - storage: rabbitmq-data
-        location: /var/lib/rabbitmq/mnesia
+        location: /var/lib/rabbitmq
       - storage: rabbitmq-config
         location: /etc/rabbitmq
 
