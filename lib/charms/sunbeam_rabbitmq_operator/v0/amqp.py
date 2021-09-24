@@ -82,14 +82,14 @@ class AMQPClientCharm(CharmBase):
 """
 
 # The unique Charmhub library identifier, never change it
-LIBID = "1a826ff51da4436296225cff99ac1e4f"
+LIBID = "a33664aaa3cc4b9da0ea716f08fc2cb0"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 1
 
 import logging
 import requests
