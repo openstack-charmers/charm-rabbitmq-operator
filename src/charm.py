@@ -145,6 +145,8 @@ class RabbitMQOperatorCharm(CharmBase):
             logging.info('Waiting for RabbitMQ to start')
             if not self.rabbit_running:
                 raise tenacity.TryAgain()
+            else:
+                logging.info('RabbitMQ started')
 
         _check_rmq_running()
         self._stored.rmq_started = True
