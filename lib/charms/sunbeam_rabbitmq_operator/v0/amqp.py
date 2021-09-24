@@ -9,7 +9,7 @@ relation name:
     - self
     - "amqp"
 
-Create two properties on your Charm:
+Also provide two additional parameters to the charm object:
     - username
     - vhost
 
@@ -26,32 +26,20 @@ class AMQPClientCharm(CharmBase):
     def __init__(self, *args):
         super().__init__(*args)
         # AMQP Requires
-        self.amqp_requires = (RabbitMQAMQPRequires(self, "amqp"))
+        self.amqp_requires = RabbitMQAMQPRequires(
+            self, "amqp",
+            username="amqp-client",
+            vhost=""amqp-client-vhost"
+        )
         self.framework.observe(
             self.amqp_requires.on.has_amqp_servers, self._on_has_amqp_servers)
         self.framework.observe(
             self.amqp_requires.on.ready_amqp_servers, self._on_ready_amqp_servers)
 
-    @property
-    def vhost(self):
-        '''Set the vhost for the AMQP relation.
-
-        This could be a config option or hard-coded.
-        '''
-        return "amqp-client-vhost"
-
-    @property
-    def username(self):
-        '''Set the username for the AMQP relation
-
-        This could be a config option or hard-coded.
-        '''
-        return "amqp-client"
-
     def _on_has_amqp_servers(self, event):
         '''React to the AMQP relation joined.
 
-        The AQMP interface will use self.username and self.vhost to commuicate
+        The AMQP interface will use the provided username and vhost to commuicate
         with the.
         '''
         # Do something before the relation is complete
@@ -59,7 +47,7 @@ class AMQPClientCharm(CharmBase):
     def _on_ready_amqp_servers(self, event):
         '''React to the AMQP relation joined.
 
-        The AQMP interface will use self.username and self.vhost for the
+        The AMQP interface will use the provided username and vhost for the
         request to the rabbitmq server.
         '''
         # AMQP Relation is ready. Do something with the completed relation.
@@ -128,10 +116,12 @@ class RabbitMQAMQPRequires(Object):
     on = RabbitMQAMQPServerEvents()
     _stored = StoredState()
 
-    def __init__(self, charm, relation_name):
+    def __init__(self, charm, relation_name, username, vhost):
         super().__init__(charm, relation_name)
         self.charm = charm
         self.relation_name = relation_name
+        self.username = username
+        self.vhost = vhost
         self.framework.observe(
             self.charm.on[relation_name].relation_joined, self._on_amqp_relation_joined
         )
@@ -154,13 +144,13 @@ class RabbitMQAMQPRequires(Object):
         self.on.has_amqp_servers.relation_event = event
         self.on.has_amqp_servers.emit()
         # TODO Move to charm code once the emit has this event attached
-        self.request_access(event, self.charm.username, self.charm.vhost)
+        self.request_access(event, self.username, self.vhost)
 
     def _on_amqp_relation_changed(self, event):
         """AMQP relation changed."""
         logging.debug("RabbitMQAMQPRequires on_changed")
         self.event = event
-        self.request_access(event, self.charm.username, self.charm.vhost)
+        self.request_access(event, self.username, self.vhost)
         if self.password(event):
             self.on.ready_amqp_servers.emit()
 
