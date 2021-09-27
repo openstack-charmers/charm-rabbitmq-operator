@@ -70,7 +70,7 @@ class AMQPClientCharm(CharmBase):
 """
 
 # The unique Charmhub library identifier, never change it
-LIBID = "a33664aaa3cc4b9da0ea716f08fc2cb0"
+LIBID = "ab1414b6baf044f099caf9c117f1a101"
 
 # Increment this major API version when introducing breaking changes
 LIBAPI = 0
