@@ -160,7 +160,7 @@ class AMQPRequires(Object):
 
     def _on_amqp_relation_changed(self, event):
         """AMQP relation changed."""
-        logging.debug("RabbitMQAMQPRequires on_changed")
+        logging.debug("RabbitMQAMQPRequires on_changed/departed")
         if self.password:
             self.on.ready.emit()
 

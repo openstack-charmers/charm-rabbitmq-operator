@@ -1,4 +1,4 @@
-# thedac-rabbitmq-operator
+# rabbitmq-operator
 
 ## Description
 
