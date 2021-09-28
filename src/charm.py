@@ -15,7 +15,7 @@ import tenacity
 from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
-from charms.sunbeam_rabbitmq_operator.v0.amqp import RabbitMQAMQPProvides
+from charms.sunbeam_rabbitmq_operator.v0.amqp import AMQPProvides
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -57,7 +57,7 @@ class RabbitMQOperatorCharm(CharmBase):
             self._on_peers_relation_created,
         )
         # AMQP Provides
-        self.amqp_provider = RabbitMQAMQPProvides(self, "amqp")
+        self.amqp_provider = AMQPProvides(self, "amqp")
         self.framework.observe(
             self.amqp_provider.on.ready_amqp_clients,
             self._on_ready_amqp_clients,
@@ -140,13 +140,15 @@ class RabbitMQOperatorCharm(CharmBase):
         else:
             logging.debug("RabbitMQ service is running")
 
-        @tenacity.retry(wait=tenacity.wait_exponential(multiplier=1, min=4, max=10))
+        @tenacity.retry(
+            wait=tenacity.wait_exponential(multiplier=1, min=4, max=10)
+        )
         def _check_rmq_running():
-            logging.info('Waiting for RabbitMQ to start')
+            logging.info("Waiting for RabbitMQ to start")
             if not self.rabbit_running:
                 raise tenacity.TryAgain()
             else:
-                logging.info('RabbitMQ started')
+                logging.info("RabbitMQ started")
 
         _check_rmq_running()
         self._stored.rmq_started = True
@@ -415,13 +417,15 @@ class RabbitMQOperatorCharm(CharmBase):
         try:
             if self.peers.operator_user_created:
                 # Use operator once created
-                api = self._get_admin_api(self._operator_user, self._operator_password)
+                api = self._get_admin_api(
+                    self._operator_user, self._operator_password
+                )
             else:
                 # Fallback to guest user during early charm lifecycle
                 api = self._get_admin_api("guest", "guest")
             # Cache product version from overview check for later use
             overview = api.overview()
-            self._stored.rabbitmq_version = overview.get('product_version')
+            self._stored.rabbitmq_version = overview.get("product_version")
         except requests.exceptions.ConnectionError:
             return False
         return True
@@ -582,9 +586,7 @@ USE_LONGNAME=true
             return
 
         if not self.rabbit_running:
-            self.unit.status = BlockedStatus(
-                "RabbitMQ not running"
-            )
+            self.unit.status = BlockedStatus("RabbitMQ not running")
             return
 
         if self._stored.rabbitmq_version:
