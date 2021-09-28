@@ -18,11 +18,17 @@ class TestCharm(unittest.TestCase):
         self.harness.begin()
 
     def test_config_changed(self):
-        self.assertEqual(list(self.harness.charm._stored.enabled_plugins), [])
+        self.assertEqual(
+            list(self.harness.charm._stored.enabled_plugins),
+            ['rabbitmq_management', 'rabbitmq_peer_discovery_k8s']
+        )
         # Mock the file push
         self.harness.charm._render_and_push_config_files = Mock()
-        self.harness.update_config({"enabled_plugins": "rabbitmq_management"})
-        self.assertEqual(list(self.harness.charm._stored.enabled_plugins), ["rabbitmq_management"])
+        self.harness.update_config({"enabled_plugins": "rabbitmq_foobar"})
+        self.assertEqual(
+            list(self.harness.charm._stored.enabled_plugins),
+            ['rabbitmq_management', 'rabbitmq_peer_discovery_k8s']
+        )
 
     def test_action(self):
         action_event = Mock()
@@ -68,23 +74,15 @@ class TestCharm(unittest.TestCase):
         self.harness.charm.on.update_status.emit()
         self.assertEqual(
             self.harness.model.unit.status,
-            ops.model.WaitingStatus('Waiting to initialize operator user'))
+            ops.model.WaitingStatus('Waiting for leader to create operator user'))
 
         # RabbitMQ is up, operator user initialized
         peers_relation_id = self.harness.add_relation("peers", "rabbitmq-operator")
         self.harness.add_relation_unit(peers_relation_id, "rabbitmq-operator/0")
-        self.harness.charm.on.update_status.emit()
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ops.model.WaitingStatus('Ready but waiting for an AMQP client relation.'))
 
         # AMQP relation incomplete
         amqp_relation_id = self.harness.add_relation("amqp", "amqp-client-app")
         self.harness.add_relation_unit(amqp_relation_id, "amqp-client-app/0")
-        self.harness.charm.on.update_status.emit()
-        self.assertEqual(
-            self.harness.model.unit.status,
-            ops.model.WaitingStatus('AMQP relation incomplete'))
 
         # AMQP relation complete
         self.harness.update_relation_data(

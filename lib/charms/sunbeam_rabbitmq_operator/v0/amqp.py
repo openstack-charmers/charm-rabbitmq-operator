@@ -185,6 +185,16 @@ class AMQPRequires(Object):
         return self._amqp_rel.data[self._amqp_rel.app].get("hostname")
 
     @property
+    def ssl_port(self) -> str:
+        """Return the SSL port from the AMQP relation"""
+        return self._amqp_rel.data[self._amqp_rel.app].get("ssl_port")
+
+    @property
+    def ssl_ca(self) -> str:
+        """Return the SSL port from the AMQP relation"""
+        return self._amqp_rel.data[self._amqp_rel.app].get("ssl_ca")
+
+    @property
     def hostnames(self) -> List[str]:
         """Return a list of remote RMQ hosts from the AMQP relation"""
         _hosts = []
