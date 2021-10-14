@@ -16,6 +16,8 @@ from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
 from charms.sunbeam_rabbitmq_operator.v0.amqp import AMQPProvides
+from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
+
 from ops.charm import CharmBase
 from ops.framework import StoredState
 from ops.main import main
@@ -79,6 +81,11 @@ class RabbitMQOperatorCharm(CharmBase):
 
         self._enable_plugin("rabbitmq_management")
         self._enable_plugin("rabbitmq_peer_discovery_k8s")
+
+        self.service_patcher = KubernetesServicePatch(
+            self,
+            [(self.app.name, 5672)]
+        )
 
     def _on_rabbitmq_pebble_ready(self, event) -> None:
         """Define and start rabbitmq workload using the Pebble API.

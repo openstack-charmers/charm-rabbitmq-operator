@@ -4,16 +4,19 @@
 # Learn more about testing at: https://juju.is/docs/sdk/testing
 
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from charm import RabbitMQOperatorCharm
-from ops.testing import Harness
+import charm
 import ops.model
+
+from ops.testing import Harness
 
 
 class TestCharm(unittest.TestCase):
-    def setUp(self):
-        self.harness = Harness(RabbitMQOperatorCharm)
+
+    @patch("charm.KubernetesServicePatch", lambda x, y: None)
+    def setUp(self, *unused):
+        self.harness = Harness(charm.RabbitMQOperatorCharm)
         self.addCleanup(self.harness.cleanup)
         self.harness.begin()
 

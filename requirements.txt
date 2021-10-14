@@ -3,3 +3,4 @@ pika
 pwgen
 rabbitmq-admin
 tenacity
+lightkube
