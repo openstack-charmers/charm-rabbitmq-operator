@@ -84,7 +84,8 @@ class RabbitMQOperatorCharm(CharmBase):
 
         self.service_patcher = KubernetesServicePatch(
             self,
-            [(self.app.name, 5672)]
+            [('amqp', 5672),
+             ('management', 15672)]
         )
 
     def _on_rabbitmq_pebble_ready(self, event) -> None:
