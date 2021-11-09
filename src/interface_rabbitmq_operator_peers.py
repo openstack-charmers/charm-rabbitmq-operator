@@ -91,6 +91,16 @@ class RabbitMQOperatorPeers(Object):
         logging.info("Setting erlang cookie")
         self.peers_rel.data[self.peers_rel.app][self.ERLANG_COOKIE] = cookie
 
+    def store_password(self, username, password):
+        logging.info(f"Storing password for {username}")
+        self.peers_rel.data[self.peers_rel.app][username] = password
+
+    def retrieve_password(self, username):
+        """Retrieve persisted password for provided username"""
+        if not self.peers_rel:
+            return None
+        return self.peers_rel.data[self.peers_rel.app].get(username)
+
     @property
     def operator_password(self):
         if not self.peers_rel:

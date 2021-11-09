@@ -16,7 +16,9 @@ from typing import Union
 
 from charms.nginx_ingress_integrator.v0.ingress import IngressRequires
 from charms.sunbeam_rabbitmq_operator.v0.amqp import AMQPProvides
-from charms.observability_libs.v0.kubernetes_service_patch import KubernetesServicePatch
+from charms.observability_libs.v0.kubernetes_service_patch import (
+    KubernetesServicePatch,
+)
 
 from ops.charm import CharmBase
 from ops.framework import StoredState
@@ -59,7 +61,9 @@ class RabbitMQOperatorCharm(CharmBase):
             self._on_peers_relation_created,
         )
         # AMQP Provides
-        self.amqp_provider = AMQPProvides(self, "amqp")
+        self.amqp_provider = AMQPProvides(
+            self, "amqp", self.create_amqp_credentials
+        )
         self.framework.observe(
             self.amqp_provider.on.ready_amqp_clients,
             self._on_ready_amqp_clients,
@@ -83,9 +87,7 @@ class RabbitMQOperatorCharm(CharmBase):
         self._enable_plugin("rabbitmq_peer_discovery_k8s")
 
         self.service_patcher = KubernetesServicePatch(
-            self,
-            [('amqp', 5672),
-             ('management', 15672)]
+            self, [("amqp", 5672), ("management", 15672)]
         )
 
     def _on_rabbitmq_pebble_ready(self, event) -> None:
@@ -280,11 +282,12 @@ class RabbitMQOperatorCharm(CharmBase):
                 return
             else:
                 raise e
+        return username
 
     def does_vhost_exist(self, vhost) -> Union[str, None]:
         """Does the vhost exist in rabbitmq?
 
-        Return the username if exists.
+        Return the vhost if exists.
         Return None if not.
 
         :param username: vhost to check
@@ -301,6 +304,7 @@ class RabbitMQOperatorCharm(CharmBase):
                 return
             else:
                 raise e
+        return vhost
 
     def create_user(self, username) -> str:
         """Create user in rabbitmq.
@@ -600,6 +604,40 @@ USE_LONGNAME=true
         if self._stored.rabbitmq_version:
             self.unit.set_workload_version(self._stored.rabbitmq_version)
         self.unit.status = ActiveStatus()
+
+    def create_amqp_credentials(self, event, username, vhost):
+        """Set AMQP Credentials.
+
+        :param event: The current event
+        :type EventsBase
+        :param username: The requested username
+        :type username: str
+        :param vhost: The requested vhost
+        :type vhost: str
+        :returns: None
+        :rtype: None
+        """
+        # TODO TLS Support. Existing interfaces set ssl_port and ssl_ca
+        logging.debug("Setting amqp connection information.")
+        # NOTE: fast exit if credentials are already on the relation
+        if event.relation.data[self.app].get("password"):
+            logging.debug(f"Credentials already provided for {username}")
+            return
+        try:
+            if not self.does_vhost_exist(vhost):
+                self.create_vhost(vhost)
+            if not self.does_user_exist(username):
+                password = self.create_user(username)
+                self.peers.store_password(username, password)
+            password = self.peers.retrieve_password(username)
+            self.set_user_permissions(username, vhost)
+            event.relation.data[self.app]["password"] = password
+            event.relation.data[self.app]["hostname"] = self.hostname
+        except requests.exceptions.ConnectionError as e:
+            logging.warning(
+                f"Rabbitmq is not ready. Defering. Errno: {e.errno}"
+            )
+            event.defer()
 
 
 if __name__ == "__main__":
