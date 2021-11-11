@@ -89,7 +89,7 @@ class RabbitMQOperatorPeers(Object):
 
     def on_changed(self, event):
         logging.debug("RabbitMQOperatorPeers on_changed")
-        if self.operator_password:
+        if self.operator_password and self.erlang_cookie:
             self.on.ready.emit()
 
     def set_operator_password(self, password: str):

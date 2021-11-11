@@ -58,7 +58,7 @@ class RabbitMQOperatorCharm(CharmBase):
         )
         self.framework.observe(
             self.peers.on.connected,
-            self._on_peers_relation_created,
+            self._on_peer_relation_connected,
         )
         # AMQP Provides
         self.amqp_provider = AMQPProvides(
@@ -172,7 +172,7 @@ class RabbitMQOperatorCharm(CharmBase):
             },
         }
 
-    def _on_peers_relation_created(self, event: EventBase) -> None:
+    def _on_peer_relation_connected(self, event: EventBase) -> None:
         """Event handler on peers relation created."""
         # Defer any peer relation setup until RMQ is actually running
         if not self._stored.rmq_started:
