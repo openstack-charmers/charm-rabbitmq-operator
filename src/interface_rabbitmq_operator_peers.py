@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Work in progress interface for AMQP relations
+RabbitMQ Operator Peer relation interface
+
+This is an internal interface used by the RabbitMQ operator charm.
 """
 
 import logging
@@ -16,13 +18,13 @@ from ops.framework import (
 
 
 class PeersCreatedEvent(EventBase):
-    """Peers Created Event."""
+    """Peer relation detected."""
 
     pass
 
 
 class HasPeersEvent(EventBase):
-    """Has Peers Event."""
+    """Peers detected on peer relation."""
 
     pass
 
@@ -32,12 +34,14 @@ class ReadyPeersEvent(EventBase):
 
 
 class RabbitMQOperatorPeersEvents(ObjectEvents):
+    """RabbitMQ Operator Peer interface events"""
     peers_relation_created = EventSource(PeersCreatedEvent)
     has_peers = EventSource(HasPeersEvent)
     ready_peers = EventSource(ReadyPeersEvent)
 
 
 class RabbitMQOperatorPeers(Object):
+    """RabbitMQ Operator Peer interface"""
 
     on = RabbitMQOperatorPeersEvents()
     state = StoredState()
@@ -75,34 +79,36 @@ class RabbitMQOperatorPeers(Object):
         # TODO check for some data on the relation
         self.on.ready_peers.emit()
 
-    def set_operator_password(self, password):
+    def set_operator_password(self, password: str):
         logging.info("Setting operator password")
         self.peers_rel.data[self.peers_rel.app][
             self.OPERATOR_PASSWORD
         ] = password
 
-    def set_operator_user_created(self, user):
+    def set_operator_user_created(self, user: str):
         logging.info("Setting operator user created")
         self.peers_rel.data[self.peers_rel.app][
             self.OPERATOR_USER_CREATED
         ] = user
 
-    def set_erlang_cookie(self, cookie):
+    def set_erlang_cookie(self, cookie: str):
+        """Set Erlang cookie for RabbitMQ clustering."""
         logging.info("Setting erlang cookie")
         self.peers_rel.data[self.peers_rel.app][self.ERLANG_COOKIE] = cookie
 
-    def store_password(self, username, password):
+    def store_password(self, username: str, password: str):
+        """Store username and password."""
         logging.info(f"Storing password for {username}")
         self.peers_rel.data[self.peers_rel.app][username] = password
 
-    def retrieve_password(self, username):
+    def retrieve_password(self, username: str) -> str:
         """Retrieve persisted password for provided username"""
         if not self.peers_rel:
             return None
-        return self.peers_rel.data[self.peers_rel.app].get(username)
+        return str(self.peers_rel.data[self.peers_rel.app].get(username))
 
     @property
-    def operator_password(self):
+    def operator_password(self) -> str:
         if not self.peers_rel:
             return None
         return self.peers_rel.data[self.peers_rel.app].get(
@@ -110,7 +116,7 @@ class RabbitMQOperatorPeers(Object):
         )
 
     @property
-    def operator_user_created(self):
+    def operator_user_created(self) -> str:
         if not self.peers_rel:
             return None
         return self.peers_rel.data[self.peers_rel.app].get(
@@ -118,7 +124,7 @@ class RabbitMQOperatorPeers(Object):
         )
 
     @property
-    def erlang_cookie(self):
+    def erlang_cookie(self) -> str:
         if not self.peers_rel:
             return None
         return self.peers_rel.data[self.peers_rel.app].get(self.ERLANG_COOKIE)
