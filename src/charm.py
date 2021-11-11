@@ -57,7 +57,7 @@ class RabbitMQOperatorCharm(CharmBase):
             self, "peers"
         )
         self.framework.observe(
-            self.peers.on.peers_relation_created,
+            self.peers.on.connected,
             self._on_peers_relation_created,
         )
         # AMQP Provides
