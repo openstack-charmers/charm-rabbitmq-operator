@@ -273,7 +273,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: String username or None
         :rtype: Union[str, None]
         """
-        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api = self._get_admin_api()
         try:
             api.get_user(username)
         except requests.exceptions.HTTPError as e:
@@ -295,7 +295,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: String vhost or None
         :rtype: Union[str, None]
         """
-        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api = self._get_admin_api()
         try:
             api.get_vhost(vhost)
         except requests.exceptions.HTTPError as e:
@@ -316,7 +316,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: String password
         :rtype: str
         """
-        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api = self._get_admin_api()
         _password = pwgen.pwgen(12)
         api.create_user(username, _password)
         return _password
@@ -339,7 +339,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
-        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api = self._get_admin_api()
         api.create_user_permission(
             username, vhost, configure=configure, write=write, read=read
         )
@@ -352,7 +352,7 @@ class RabbitMQOperatorCharm(CharmBase):
         :returns: None
         :rtype: None
         """
-        api = self._get_admin_api(self._operator_user, self._operator_password)
+        api = self._get_admin_api()
         api.create_vhost(vhost)
 
     def _enable_plugin(self, plugin) -> None:
@@ -429,9 +429,7 @@ class RabbitMQOperatorCharm(CharmBase):
         try:
             if self.peers.operator_user_created:
                 # Use operator once created
-                api = self._get_admin_api(
-                    self._operator_user, self._operator_password
-                )
+                api = self._get_admin_api()
             else:
                 # Fallback to guest user during early charm lifecycle
                 api = self._get_admin_api("guest", "guest")
@@ -442,12 +440,17 @@ class RabbitMQOperatorCharm(CharmBase):
             return False
         return True
 
-    def _get_admin_api(self, username, password) -> rabbitmq_admin.AdminAPI:
-        """Return an administravie API for RabbitMQ.
+    def _get_admin_api(self,
+                       username: str = None,
+                       password: str = None) -> rabbitmq_admin.AdminAPI:
+        """Return an administrative API for RabbitMQ.
 
-        :returns: The administravie API object
-        :rtype: rabbitmq_admin.AdminAPI
+        :username: Username to access RMQ API (defaults to generated operator user)
+        :password: Password to access RMQ API (defaults to generated operator password)
+        :returns: The RMQ administrative API object
         """
+        username = username or self._operator_user
+        password = password or self._operator_password
         return rabbitmq_admin.AdminAPI(
             url=self._rabbitmq_mgmt_url, auth=(username, password)
         )
