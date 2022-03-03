@@ -75,7 +75,7 @@ LIBAPI = 0
 
 # Increment this PATCH version before using `charmcraft publish-lib` or reset
 # to 0 if you are raising the major API version
-LIBPATCH = 3
+LIBPATCH = 4
 
 import logging
 
@@ -256,17 +256,24 @@ class AMQPProvides(Object):
 
     def _on_amqp_relation_joined(self, event):
         """Handle AMQP joined."""
-        logging.debug("RabbitMQAMQPProvides on_joined")
+        logging.debug("RabbitMQAMQPProvides on_joined data={}"
+                      .format(event.relation.data))
         self.on.has_amqp_clients.emit()
 
     def _on_amqp_relation_changed(self, event):
         """Handle AMQP changed."""
-        logging.debug("RabbitMQAMQPProvides on_changed")
+        logging.debug("RabbitMQAMQPProvides on_changed data={}"
+                      .format(event.relation.data))
         # Validate data on the relation
         if self.username(event) and self.vhost(event):
             self.on.ready_amqp_clients.emit()
             if self.charm.unit.is_leader():
                 self.callback(event, self.username(event), self.vhost(event))
+        else:
+            logging.warning("Received AMQP changed event without the "
+                            "expected keys ('username', 'vhost') in the "
+                            "application data bag.  Incompatible charm in "
+                            "other end of relation?")
 
     def _on_amqp_relation_broken(self, event):
         """Handle AMQP broken."""
