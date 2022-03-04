@@ -89,7 +89,9 @@ class RabbitMQOperatorCharm(CharmBase):
         # NOTE(jamespage): This should become part of what Juju
         # does at some point in time.
         self.service_patcher = KubernetesServicePatch(
-            self, [("amqp", 5672), ("management", 15672)]
+            self,
+            service_type="LoadBalancer",
+            ports=[("amqp", 5672), ("management", 15672)]
         )
 
     def _on_rabbitmq_pebble_ready(self, event: EventBase) -> None:
@@ -128,6 +130,7 @@ class RabbitMQOperatorCharm(CharmBase):
                 RABBITMQ_COOKIE_PATH,
                 self.peers.erlang_cookie,
                 permissions=0o600,
+                make_dirs=True,
             )
 
         # Add intial Pebble config layer using the Pebble API
@@ -235,6 +238,9 @@ class RabbitMQOperatorCharm(CharmBase):
 
     @property
     def amqp_bind_address(self) -> str:
+        return self._amqp_bind_address()
+
+    def _amqp_bind_address(self) -> str:
         """Bind address for AMQP.
 
         :returns: IP address to use for AMQP endpoint.
@@ -444,7 +450,8 @@ class RabbitMQOperatorCharm(CharmBase):
         enabled_plugins_template = f"[{enabled_plugins}]."
         logger.info("Pushing new enabled_plugins")
         container.push(
-            "/etc/rabbitmq/enabled_plugins", enabled_plugins_template
+            "/etc/rabbitmq/enabled_plugins", enabled_plugins_template,
+            make_dirs=True
         )
 
     def _render_and_push_rabbitmq_conf(self) -> None:
@@ -477,7 +484,7 @@ cluster_partition_handling = autoheal
 queue_master_locator = min-masters
 """
         logger.info("Pushing new rabbitmq.conf")
-        container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf)
+        container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf, make_dirs=True)
 
     def _render_and_push_rabbitmq_env(self) -> None:
         """Render and push rabbitmq-env conf.
