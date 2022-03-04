@@ -4,3 +4,4 @@ pwgen
 rabbitmq-admin
 tenacity
 lightkube
+lightkube-models
