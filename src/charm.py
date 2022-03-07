@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 RABBITMQ_CONTAINER = "rabbitmq"
 RABBITMQ_SERVER_SERVICE = "rabbitmq-server"
+EPMD_SERVICE = "epmd"
 RABBITMQ_COOKIE_PATH = "/var/lib/rabbitmq/.erlang.cookie"
 
 
@@ -170,6 +171,15 @@ class RabbitMQOperatorCharm(CharmBase):
                     "override": "replace",
                     "summary": "RabbitMQ Server",
                     "command": "rabbitmq-server",
+                    "startup": "enabled",
+                    "requires": [
+                        EPMD_SERVICE
+                    ],
+                },
+                EPMD_SERVICE: {
+                    "override": "replace",
+                    "summary": "Erlang EPM service",
+                    "command": "epmd -d",
                     "startup": "enabled",
                 },
             },
