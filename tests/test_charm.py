@@ -30,6 +30,7 @@ class TestCharm(unittest.TestCase):
         # so mock out for now
         # TODO: remove when implemeted
         self.harness.charm._amqp_bind_address = Mock(return_value="10.5.0.1")
+        self.maxDiff = None
 
     def test_action(self):
         action_event = Mock()
@@ -49,6 +50,17 @@ class TestCharm(unittest.TestCase):
                     "override": "replace",
                     "summary": "RabbitMQ Server",
                     "command": "rabbitmq-server",
+                    "startup": "enabled",
+                    "user": "rabbitmq",
+                    "group": "rabbitmq",
+                    "requires": ["epmd"],
+                },
+                "epmd": {
+                    "override": "replace",
+                    "summary": "Erlang EPM service",
+                    "command": "epmd -d",
+                    "user": "rabbitmq",
+                    "group": "rabbitmq",
                     "startup": "enabled",
                 },
             },

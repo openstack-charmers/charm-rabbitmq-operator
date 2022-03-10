@@ -31,7 +31,11 @@ logger = logging.getLogger(__name__)
 
 RABBITMQ_CONTAINER = "rabbitmq"
 RABBITMQ_SERVER_SERVICE = "rabbitmq-server"
+RABBITMQ_USER = "rabbitmq"
+RABBITMQ_GROUP = "rabbitmq"
 RABBITMQ_COOKIE_PATH = "/var/lib/rabbitmq/.erlang.cookie"
+
+EPMD_SERVICE = "epmd"
 
 
 class RabbitMQOperatorCharm(CharmBase):
@@ -131,6 +135,8 @@ class RabbitMQOperatorCharm(CharmBase):
                 self.peers.erlang_cookie,
                 permissions=0o600,
                 make_dirs=True,
+                user=RABBITMQ_USER,
+                group=RABBITMQ_GROUP,
             )
 
         # Add intial Pebble config layer using the Pebble API
@@ -171,6 +177,19 @@ class RabbitMQOperatorCharm(CharmBase):
                     "summary": "RabbitMQ Server",
                     "command": "rabbitmq-server",
                     "startup": "enabled",
+                    "user": RABBITMQ_USER,
+                    "group": RABBITMQ_GROUP,
+                    "requires": [
+                        EPMD_SERVICE
+                    ],
+                },
+                EPMD_SERVICE: {
+                    "override": "replace",
+                    "summary": "Erlang EPM service",
+                    "command": "epmd -d",
+                    "startup": "enabled",
+                    "user": RABBITMQ_USER,
+                    "group": RABBITMQ_GROUP,
                 },
             },
         }
