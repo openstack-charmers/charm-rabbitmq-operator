@@ -94,7 +94,7 @@ class RabbitMQOperatorCharm(CharmBase):
         # does at some point in time.
         self.service_patcher = KubernetesServicePatch(
             self,
-            service_type="LoadBalancer",
+            service_type="ClusterIP",
             ports=[("amqp", 5672), ("management", 15672)]
         )
 
@@ -119,6 +119,14 @@ class RabbitMQOperatorCharm(CharmBase):
 
         # Ensure that erlang cookie is consistent across units
         if not self.unit.is_leader() and not self.peers.erlang_cookie:
+            event.defer()
+            return
+
+        # Wait for the peers binding address to be ready before configuring
+        # the rabbit environment. This is due to rabbitmq-env.conf needing
+        # the unit address for peering.
+        if self.peers_bind_address is None:
+            logger.debug('Waiting for binding address on peers interface')
             event.defer()
             return
 
@@ -201,6 +209,10 @@ class RabbitMQOperatorCharm(CharmBase):
             event.defer()
             return
 
+        if self.peers_bind_address is None:
+            event.defer()
+            return
+
         logging.info("Peer relation instantiated.")
 
         if not self.peers.erlang_cookie and self.unit.is_leader():
@@ -254,6 +266,20 @@ class RabbitMQOperatorCharm(CharmBase):
         for amqp in self.framework.model.relations["amqp"]:
             # We only care about one relation. Returning the first.
             return amqp
+
+    @property
+    def peers_bind_address(self) -> str:
+        return self._peers_bind_address()
+
+    def _peers_bind_address(self) -> str:
+        """Bind address for the rabbit node to its peers.
+
+        :returns: IP address to use for peering, or None if not yet available
+        """
+        address = self.model.get_binding('peers').network.bind_address
+        if address is None:
+            return address
+        return str(address)
 
     @property
     def amqp_bind_address(self) -> str:
@@ -513,7 +539,7 @@ queue_master_locator = min-masters
         container = self.unit.get_container(RABBITMQ_CONTAINER)
         rabbitmq_env = f"""
 # Sane configuration defaults for running under K8S
-NODENAME=rabbit@{self.amqp_bind_address}
+NODENAME=rabbit@{self.peers_bind_address}
 USE_LONGNAME=true
 """
         logger.info("Pushing new rabbitmq-env.conf")
@@ -567,6 +593,15 @@ USE_LONGNAME=true
         """
         # TODO TLS Support. Existing interfaces set ssl_port and ssl_ca
         logging.debug("Setting amqp connection information.")
+
+        # Need to have the peers binding address to be available. Rabbit
+        # units will need this in order to properly start and peer, so make
+        # sure this is available before attempting to create any credentials
+        if self.peers_bind_address is None:
+            logger.debug('Waiting for peers bind address')
+            event.defer()
+            return
+
         # NOTE: fast exit if credentials are already on the relation
         if event.relation.data[self.app].get("password"):
             logging.debug(f"Credentials already provided for {username}")
@@ -581,6 +616,18 @@ USE_LONGNAME=true
             self.set_user_permissions(username, vhost)
             event.relation.data[self.app]["password"] = password
             event.relation.data[self.app]["hostname"] = self.hostname
+        except requests.exceptions.HTTPError as http_e:
+            # If the peers binding address exists, but the operator has not
+            # been set up yet, the command will fail with a http 401 error and
+            # unauthorized in the message. Just check the status code for now.
+            if http_e.response.status_code == 401:
+                logger.warning(
+                    f'Rabbitmq has not been fully configured yet, deferring. '
+                    f'Errno: {http_e.response.status_code}'
+                )
+                event.defer()
+            else:
+                raise()
         except requests.exceptions.ConnectionError as e:
             logging.warning(
                 f"Rabbitmq is not ready. Defering. Errno: {e.errno}"

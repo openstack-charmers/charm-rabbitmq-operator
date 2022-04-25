@@ -30,6 +30,7 @@ class TestCharm(unittest.TestCase):
         # so mock out for now
         # TODO: remove when implemeted
         self.harness.charm._amqp_bind_address = Mock(return_value="10.5.0.1")
+        self.harness.charm._peers_bind_address = Mock(return_value="10.10.1.1")
         self.maxDiff = None
 
     def test_action(self):
