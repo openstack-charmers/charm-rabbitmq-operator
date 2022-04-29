@@ -257,13 +257,13 @@ class AMQPProvides(Object):
     def _on_amqp_relation_joined(self, event):
         """Handle AMQP joined."""
         logging.debug("RabbitMQAMQPProvides on_joined data={}"
-                      .format(event.relation.data))
+                      .format(event.relation.data[event.relation.app]))
         self.on.has_amqp_clients.emit()
 
     def _on_amqp_relation_changed(self, event):
         """Handle AMQP changed."""
         logging.debug("RabbitMQAMQPProvides on_changed data={}"
-                      .format(event.relation.data))
+                      .format(event.relation.data[event.relation.app]))
         # Validate data on the relation
         if self.username(event) and self.vhost(event):
             self.on.ready_amqp_clients.emit()
