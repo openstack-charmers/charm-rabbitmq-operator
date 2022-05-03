@@ -18,15 +18,15 @@ begin using the message broker immediately.
 #### Simple deployment
 
 ```
- juju deploy thedac-rabbitmq-operator
+ juju deploy sunbeam-rabbitmq-operator
  juju deploy nginx-ingress-integrator
- juju add-relation thedac-rabbitmq-operator nginx-ingress-integrator
+ juju add-relation sunbeam-rabbitmq-operator nginx-ingress-integrator
 ```
 
 #### Relate consuming client operators
 
 ```
-juju add-relation <app-name>:amqp thedac-rabbitmq-operator:amqp
+juju add-relation <app-name>:amqp sunbeam-rabbitmq-operator:amqp
 ```
 
 ### Access the RabbitMQ management web UI
@@ -36,11 +36,11 @@ juju add-relation <app-name>:amqp thedac-rabbitmq-operator:amqp
  # Get the ingress service IP
  juju status
  # Get user and password for administrive operator user
- juju run-action --wait thedac-rabbitmq-operator/0 get-operator-info
+ juju run-action --wait sunbeam-rabbitmq-operator/0 get-operator-info
 ```
- 
+
 In a browser:
-* Connect to the ingress service IP and port 15672 
+* Connect to the ingress service IP and port 15672
   * Example: http://10.152.183.37:15672
 * Login with the `operator` user and the password from get-operator-info
 
