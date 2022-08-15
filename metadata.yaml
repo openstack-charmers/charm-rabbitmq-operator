@@ -4,6 +4,8 @@ name: sunbeam-rabbitmq-operator
 description: RabbitMQ
 summary: RabbitMQ charmed operator for Kubernetes
 
+source: https://github.com/openstack-charmers/charm-rabbitmq-operator
+issues: https://github.com/openstack-charmers/charm-rabbitmq-operator/issues
 docs: https://discourse.charmhub.io/t/thedac-rabbitmq-operator-docs-index/4630
 
 containers:
