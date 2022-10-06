@@ -519,7 +519,9 @@ cluster_formation.peer_discovery_backend = k8s
 cluster_formation.k8s.host = kubernetes.default.svc.cluster.local
 cluster_formation.k8s.port = 443
 cluster_formation.k8s.scheme = https
-cluster_formation.k8s.service_name = {self.app.name}
+cluster_formation.k8s.service_name = {self.app.name}-endpoints
+cluster_formation.k8s.address_type = hostname
+cluster_formation.k8s.hostname_suffix = .{self.app.name}-endpoints
 
 # Cluster cleanup and autoheal
 cluster_formation.node_cleanup.interval = 30
@@ -531,6 +533,10 @@ queue_master_locator = min-masters
         logger.info("Pushing new rabbitmq.conf")
         container.push("/etc/rabbitmq/rabbitmq.conf", rabbitmq_conf, make_dirs=True)
 
+    @property
+    def nodename(self) -> str:
+        return f"{self.unit.name.replace('/', '-')}.{self.app.name}-endpoints"
+
     def _render_and_push_rabbitmq_env(self) -> None:
         """Render and push rabbitmq-env conf.
 
@@ -539,7 +545,7 @@ queue_master_locator = min-masters
         container = self.unit.get_container(RABBITMQ_CONTAINER)
         rabbitmq_env = f"""
 # Sane configuration defaults for running under K8S
-NODENAME=rabbit@{self.peers_bind_address}
+NODENAME=rabbit@{self.nodename}
 USE_LONGNAME=true
 """
         logger.info("Pushing new rabbitmq-env.conf")
