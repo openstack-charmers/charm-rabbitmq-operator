@@ -1,7 +1,0 @@
-ops >= 1.2.0
-pika
-pwgen
-rabbitmq-admin
-tenacity
-lightkube
-lightkube-models

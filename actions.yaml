@@ -1,6 +1,0 @@
-# Copyright 2021 David Ames
-# See LICENSE file for licensing details.
-
-get-operator-info:
-  description: |
-    Get information on the operator user for rabbitmq management.
